@@ -23,19 +23,17 @@
     </form>
   </main>
 
-  <main class="wrap" id="console" hidden style="max-width:1880px">
-    <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:28px">
-      <div>
-        <p class="eyebrow" id="date"></p>
-        <h1 style="margin:0">Test drive queue</h1>
-      </div>
-      <div style="margin-left:auto;display:flex;gap:24px;flex-wrap:wrap" id="summary"></div>
+  <main class="wrap" id="console" hidden style="max-width:1560px">
+    <div class="q-head">
+      <div><p class="eyebrow" id="date"></p><h1>Test drive queue</h1></div>
+      <div class="q-kpis" id="summary"></div>
     </div>
-    <div class="queue-search">
-      <label for="queue-search">Search number, name or phone</label>
-      <input id="queue-search" type="search" placeholder="Search number, name or phone" autocomplete="off" />
+    <div class="q-tools">
+      <input class="q-search" id="queue-search" type="search" placeholder="Find a guest by name, number or mobile" aria-label="Find a guest by name, number or mobile" autocomplete="off" />
+      <div class="q-chips" id="q-filters"></div>
+      <button type="button" class="q-announce" id="announce" aria-pressed="false" title="Play call announcements on this device. Leave off when the lobby display is nearby."><span class="q-tog" aria-hidden="true"></span>Announce here</button>
     </div>
-    <div class="cols" id="cols"></div>
+    <div class="q-lanes" id="cols"></div>
     <section class="panel" style="margin-top:20px">
       <div class="guest-head">
         <div>
@@ -70,6 +68,9 @@
       <button class="btn danger sm" id="reset">Archive &amp; reset today's queue</button>
     </div>
   </main>
+
+  <div class="q-scrim" id="q-scrim" hidden></div>
+  <aside class="q-drawer" id="q-drawer" role="dialog" aria-modal="true" aria-labelledby="q-guest-name" tabindex="-1" hidden></aside>
 
   <script src="/common.js"></script>
   <script>
@@ -115,7 +116,9 @@
     const genderLabel = (gender) => gender === 'male' ? 'Male' : gender === 'female' ? 'Female' : '';
 
     // View state lives outside the polled data and is scoped by ticket/model identity.
-    const queueView = { search: '', expanded: new Set(), collapsed: new Set(), recentAll: new Set() };
+    const queueView = { search: '', filter: 'all', selected: null, recentOpen: new Set(), recentAll: new Set() };
+    let guestOpener = null;
+    const documentImages = new Map();
     const reorderView = { drag: null, saving: false, version: 0 };
     const orderKey = (ticket) => ticket.queueAt ?? ticket.createdAt;
 
@@ -135,7 +138,7 @@
     }
 
     async function saveOrder(model, ids, focusId) {
-      if (reorderView.saving || queueView.search.trim()) return;
+      if (reorderView.saving || queueView.search.trim() || queueView.filter !== 'all') return;
       const waiting = state.tickets.filter((t) => t.model === model && t.status === 'waiting').sort((a, b) => orderKey(a) - orderKey(b));
       const keys = waiting.map(orderKey);
       const original = waiting.map((ticket) => ({ ticket, queueAt: ticket.queueAt }));
@@ -166,7 +169,7 @@
     }
 
     function moveWaiting(id, offset) {
-      if (reorderView.drag || reorderView.saving || queueView.search.trim()) return;
+      if (reorderView.drag || reorderView.saving || queueView.search.trim() || queueView.filter !== 'all') return;
       const ticket = state.tickets.find((t) => t.id === id && t.status === 'waiting');
       if (!ticket) return;
       const ids = state.tickets.filter((t) => t.model === ticket.model && t.status === 'waiting')
@@ -188,63 +191,92 @@
       return recent && !query.trim() && !showAll ? matches.slice(0, 5) : matches;
     }
 
-    function row(t, actions, position, total) {
-      const time = t.status === 'waiting' ? `joined ${ago(t.createdAt)}` :
-        t.status === 'called' ? `called ${ago(t.calledAt)}` :
-        t.status === 'driving' ? `driving since ${ago(t.startedAt)}` : (STATUS_LABEL[t.status] + ' · ' + ago(t.finishedAt || t.createdAt));
-      const licenseDetails = [
-        t.licenseNumber && `Lic. ${esc(t.licenseNumber)}`,
-        t.licenseExpiry && `exp ${esc(cardDate(t.licenseExpiry))}${t.licenseExpiry < state.date ? ' <span class="pill expired">Expired</span>' : ''}`,
-        (t.hasLicensePhoto || t.hasLicensePhotoBack || t.hasSignature) && `<button type="button" class="link-inline" data-photo="${esc(t.id)}" aria-label="View license ${esc(t.number)}">View license</button>`,
-      ].filter(Boolean);
-      const smsLabels = { Pending: 'SMS sending…', Processed: 'SMS sending…', Sent: 'SMS sent', Delivered: 'SMS delivered ✓', Failed: 'SMS failed', Skipped: 'SMS off' };
+    function formatWait(minutes) {
+      const m = Math.max(0, Math.floor(minutes));
+      return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
+    }
+
+    function longestWait(tickets, now = Date.now()) {
+      const waiting = tickets.filter((t) => t.status === 'waiting');
+      return waiting.length ? formatWait(Math.max(...waiting.map((t) => (now - t.createdAt) / 60000))) : '—';
+    }
+
+    function filterRegistered(items, filter) {
+      return filter === 'pre' ? items.filter((t) => t.guestMatched === true) : items;
+    }
+
+    function drainTimeText(model, count) {
+      const minutes = Math.ceil(Math.max(0, Number(model.minutes) || 0) * count / Math.max(1, Number(model.units) || 1));
+      return `${count} waiting · about ${minutes}m of drives to clear the line`;
+    }
+
+    function matching(items) {
+      return filterTickets(filterRegistered(items, queueView.filter), queueView.search);
+    }
+
+    function ticketActions(t) {
+      return {
+        waiting: [['call', 'Call'], ['cancel', 'Remove', 'red']],
+        called: [['call', 'Recall'], ['start', 'Start drive', 'dark'], ['noshow', 'No-show', 'red']],
+        driving: [['finish', 'Finish drive', 'dark']],
+        noshow: [['requeue', 'Re-queue']],
+      }[t.status] || [];
+    }
+
+    function actionButtons(t) {
+      return ticketActions(t).map(([act, label, cls = '']) => `<button type="button" class="q-mini ${cls}" data-key="act-${act}" data-id="${esc(t.id)}" data-act="${act}" aria-label="${label} ${esc(t.number)}">${label}</button>`).join('');
+    }
+
+    function smsBadge(t) {
+      const labels = { Pending: 'SMS sending…', Processed: 'SMS sending…', Sent: 'SMS sent', Delivered: 'SMS delivered ✓', Failed: 'SMS failed', Skipped: 'SMS off' };
       const sms = t.callSms;
-      const smsPill = sms && smsLabels[sms.state]
-        ? `<span class="pill sms-${sms.state.toLowerCase()}"${sms.state === 'Failed' && sms.error ? ` title="${esc(sms.error)}"` : ''}>${smsLabels[sms.state]}</span>` : '';
-      const lic = licenseDetails.length ? `<div>${licenseDetails.join(' · ')}</div>` : '';
-      const expanded = queueView.expanded.has(t.id);
-      const detailsId = 'ticket-details-' + t.id;
-      return `<li data-key="ticket-${esc(t.id)}" data-ticket="${esc(t.id)}">
-        <div class="ticket-line">
-          ${position && !queueView.search.trim() ? `<span class="queue-reorder" data-key="reorder-${esc(t.id)}">
-            <button type="button" class="reorder-handle" draggable="${!reorderView.saving}" data-handle="${esc(t.id)}" aria-label="Drag to reorder ${esc(t.number)}" aria-disabled="${reorderView.saving}" title="Drag or use ArrowUp / ArrowDown">⋮⋮</button>
-            <button type="button" data-move="${esc(t.id)}" data-offset="-1" aria-label="Move ${esc(t.number)} up" ${position === 1 || reorderView.saving ? 'disabled' : ''}>▲</button>
-            <button type="button" data-move="${esc(t.id)}" data-offset="1" aria-label="Move ${esc(t.number)} down" ${position === total || reorderView.saving ? 'disabled' : ''}>▼</button>
-          </span>` : ''}
-          ${position ? `<span class="queue-position" aria-label="Position ${position}">${position}.</span>` : ''}
-          <span class="n">${esc(t.number)}</span>
-          <span class="ticket-name">${esc(t.name)}</span>
-          <span class="ticket-phone">${esc(t.phone)}</span>
-          <span class="ticket-time">${esc(time)}</span>${smsPill}
-          <div class="acts">${actions.map(([a, label, cls]) => `<button type="button" class="btn sm ${cls || 'ghost'}" data-id="${esc(t.id)}" data-act="${a}" aria-label="${esc(label)} ${esc(t.number)}">${label}</button>`).join('')}</div>
-          <button type="button" class="details-toggle" data-details="${esc(t.id)}" aria-label="Details ${esc(t.number)}" aria-expanded="${expanded}" aria-controls="${esc(detailsId)}">Details</button>
-        </div>
-        <div class="ticket-details" id="${esc(detailsId)}"${expanded ? '' : ' hidden'}>
-          <div>${esc(t.email || '')}${t.email && t.municipality ? ' · ' : ''}${esc(t.municipality || '')}</div>
-          <div>${esc((state.customerTypes || {})[t.customerType] || t.customerType || '')}${t.guestMatched ? ' <span class="pill driving">On guest list</span>' : ''}</div>
-          <div>Gender: ${esc(genderLabel(t.gender))}</div>
-          <div>Location/Dealer: ${esc(t.dealer || '')}</div>
-          <div>Assigned Sales Executive: ${esc(t.salesExecutive || '')}</div>
-          <div>Test drive resource: ${esc((state.testDriveResources || {})[t.testDriveResource] || t.testDriveResource || '')}</div>${lic}
-        </div>
+      return sms && labels[sms.state] ? `<span class="pill q-sms sms-${esc(sms.state.toLowerCase())}"${sms.state === 'Failed' && sms.error ? ` title="${esc(sms.error)}"` : ''}>${labels[sms.state]}</span>` : '';
+    }
+
+    function row(t, position, total) {
+      const reorder = position && !queueView.search.trim() && queueView.filter === 'all';
+      return `<li class="q-r ${queueView.selected === t.id ? 'sel' : ''}" data-key="ticket-${esc(t.id)}" data-ticket="${esc(t.id)}" data-open="${esc(t.id)}" tabindex="0" aria-label="Details ${esc(t.number)} ${esc(t.name)}">
+        ${position ? `<span class="pos" aria-label="Position ${position}">${position}.</span>` : ''}
+        <span class="q-num">${esc(t.number)}</span><span class="nm">${esc(t.name)}${t.guestMatched === true ? '<span class="q-f">Pre-registered</span>' : ''}</span>
+        <span class="w">${t.status === 'waiting' ? formatWait((Date.now() - t.createdAt) / 60000) : esc(STATUS_LABEL[t.status] || t.status)}</span>
+        ${reorder ? `<span class="q-reorder" data-key="reorder-${esc(t.id)}">
+          <button type="button" class="reorder-handle" draggable="${!reorderView.saving}" data-handle="${esc(t.id)}" aria-label="Drag to reorder ${esc(t.number)}" aria-disabled="${reorderView.saving}" title="Drag or use ArrowUp / ArrowDown">⋮⋮</button>
+          <button type="button" data-move="${esc(t.id)}" data-offset="-1" aria-label="Move ${esc(t.number)} up" ${position === 1 || reorderView.saving ? 'disabled' : ''}>▲</button>
+          <button type="button" data-move="${esc(t.id)}" data-offset="1" aria-label="Move ${esc(t.number)} down" ${position === total || reorderView.saving ? 'disabled' : ''}>▼</button>
+        </span>` : ''}
+        <span class="q-actions">${actionButtons(t)}</span>
       </li>`;
     }
 
-    function section(label, items, actions, model, kind) {
-      const key = model + ':' + kind;
-      const searching = !!queueView.search.trim();
-      const matches = filterTickets(items, queueView.search);
-      const visible = visibleTickets(items, queueView.search, kind === 'recent', queueView.recentAll.has(model));
-      const collapsed = queueView.collapsed.has(key);
-      const contentId = 'queue-section-' + model + '-' + kind;
-      return `<section class="queue-section" data-key="${esc(key)}">
-        <h2 class="section-label"><button type="button" data-section="${esc(key)}" aria-controls="${esc(contentId)}" aria-expanded="${!collapsed}" aria-label="${esc(label)} ${esc(model)}"><span aria-hidden="true">${collapsed ? '&#9656;' : '&#9662;'}</span> ${label} (${searching ? matches.length + ' of ' : ''}${items.length})</button></h2>
-        <div id="${esc(contentId)}"${collapsed ? ' hidden' : ''}>
-          ${kind === 'waiting' && searching ? '<p class="reorder-note">Clear search to reorder</p>' : ''}
-          ${visible.length ? `<ul class="list"${kind === 'waiting' ? ` data-waiting-model="${esc(model)}"` : ''}>${visible.map((t) => row(t, actions(t), kind === 'waiting' ? items.indexOf(t) + 1 : null, items.length)).join('')}</ul>` : `<div class="empty">${searching ? 'No matches' : 'None'}</div>`}
-          ${kind === 'recent' && !searching && items.length > 5 ? `<button type="button" class="recent-toggle" data-recent="${esc(model)}" aria-expanded="${queueView.recentAll.has(model)}" aria-label="${queueView.recentAll.has(model) ? 'Show less' : 'Show all (' + items.length + ')'} recent ${esc(model)}">${queueView.recentAll.has(model) ? 'Show less' : 'Show all (' + items.length + ')'}</button>` : ''}
+    function slot(t, model) {
+      const driving = t.status === 'driving';
+      const elapsed = Math.max(0, Math.floor((Date.now() - t.startedAt) / 60000));
+      const over = elapsed > model.minutes;
+      return `<div class="q-slot ${driving ? 'drive' : 'call'}" data-key="ticket-${esc(t.id)}" data-open="${esc(t.id)}" tabindex="0" aria-label="Details ${esc(t.number)} ${esc(t.name)}">
+        <span class="lab">${driving ? 'On the road' : 'Calling'}</span>
+        <span class="nm"><span class="q-num">${esc(t.number)}</span> ${esc(t.name)}</span>
+        <span class="q-actions">${actionButtons(t)}</span>
+        <span class="sub">${driving ? `${elapsed} of ${model.minutes} min · ${over ? '<b class="over">running over</b>' : 'back about ' + staffClock(t.startedAt + model.minutes * 60000)}` : `called ${ago(t.calledAt)}${t.callCount > 1 ? ` · ${t.callCount} calls` : ''} ${smsBadge(t)}`}</span>
+        ${driving ? `<div class="q-bar ${over ? 'over' : ''}"><i style="width:${Math.min(100, elapsed / Math.max(1, model.minutes) * 100)}%"></i></div>` : ''}
+      </div>`;
+    }
+
+    function recentSection(items, model) {
+      const filtered = !!queueView.search.trim() || queueView.filter !== 'all';
+      const matches = matching(items);
+      const visible = visibleTickets(matches, queueView.search, true, queueView.recentAll.has(model));
+      const open = queueView.recentOpen.has(model);
+      return `<section class="q-recent" data-key="recent-${esc(model)}">
+        <button type="button" class="q-recent-toggle" data-section="${esc(model)}" aria-controls="recent-${esc(model)}" aria-expanded="${open}" aria-label="Recent ${esc(model)}">${open ? '▾' : '▸'} Recent (${filtered ? matches.length + ' of ' : ''}${items.length})</button>
+        <div id="recent-${esc(model)}"${open ? '' : ' hidden'}>
+          ${visible.length ? `<ul class="q-rows">${visible.map((t) => row(t)).join('')}</ul>` : '<div class="q-empty">No matches</div>'}
+          ${!queueView.search.trim() && matches.length > 5 ? `<button type="button" class="q-more" data-recent="${esc(model)}" aria-expanded="${queueView.recentAll.has(model)}" aria-label="${queueView.recentAll.has(model) ? 'Show less' : 'Show all (' + matches.length + ')'} recent ${esc(model)}">${queueView.recentAll.has(model) ? 'Show less' : 'Show all (' + matches.length + ')'}</button>` : ''}
         </div>
       </section>`;
+    }
+
+    function staffClock(ms) {
+      return ms ? new Date(ms).toLocaleTimeString('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', minute: '2-digit' }) : '—';
     }
 
     // Reuse keyed rows and controls so polling doesn't replace focused elements.
@@ -276,29 +308,113 @@
       if (reorderView.drag) return;
       $('#date').textContent = new Date(state.date + 'T00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
       const by = (s) => state.tickets.filter((t) => t.status === s);
-      $('#summary').innerHTML = [['Waiting', by('waiting').length], ['On drive', by('driving').length], ['Completed', by('done').length]]
-        .map(([l, n]) => `<div style="text-align:right"><div style="font-size:28px;font-weight:600">${n}</div><div class="muted" style="font-size:12px;letter-spacing:.1em;text-transform:uppercase">${l}</div></div>`).join('');
-
-      const template = document.createElement('template');
-      template.innerHTML = state.models.map((m) => {
+      const waitingAll = by('waiting');
+      updateMarkup($('#summary'), [
+        ['wait', waitingAll.length, 'waiting'], ['call', by('called').length, 'calling'],
+        ['drive', by('driving').length, 'on the road'], ['done', by('done').length, 'drives done'],
+        ['', longestWait(state.tickets), 'longest wait'],
+      ].map(([c, n, label]) => `<span class="q-kpi" data-key="${label}">${c ? `<i class="${c}" aria-hidden="true"></i>` : ''}<b>${n}</b>${label}</span>`).join(''));
+      updateMarkup($('#q-filters'), [['all', 'Everyone', waitingAll.length], ['pre', 'Pre-registered', filterRegistered(waitingAll, 'pre').length]]
+        .map(([value, label, count]) => `<button type="button" class="q-chip" data-key="${value}" data-filter="${value}" aria-pressed="${queueView.filter === value}">${label}<span class="c">${count}</span></button>`).join(''));
+      const filtered = !!queueView.search.trim() || queueView.filter !== 'all';
+      updateMarkup($('#cols'), state.models.map((m) => {
         const mine = state.tickets.filter((t) => t.model === m.id);
         const pick = (...s) => mine.filter((t) => s.includes(t.status));
         const waiting = pick('waiting').sort((a, b) => orderKey(a) - orderKey(b));
+        const list = matching(waiting);
         const recent = pick('done', 'noshow', 'cancelled').sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
-        return `<section class="panel" data-key="model-${esc(m.id)}">
-          <div class="col-head">
-            <img src="${m.image}" alt="${esc(m.name)}" />
-            <div><div class="name">${esc(m.name)}</div><div class="sub">${m.waitingCount} waiting · ~${m.estWaitMin} min</div></div>
-            <button type="button" class="btn accent" data-next="${esc(m.id)}" aria-label="Call next ${esc(m.name)}" ${waiting.length ? '' : 'disabled'}>Call next</button>
+        const slots = (status, label, empty) => {
+          const all = pick(status), found = matching(all);
+          return found.map((t) => slot(t, m)).join('') || `<div class="q-slot empty" data-key="empty-${status}"><span class="lab">${label}</span>${all.length ? 'No matches' : empty}</div>`;
+        };
+        return `<section class="q-lane" data-key="model-${esc(m.id)}">
+          <div class="q-lane-head">
+            <img src="${esc(m.image)}" alt="" />
+            <div><h2>${esc(m.name)}<small>${esc(m.tagline || m.brand || '')}</small></h2><div class="q-meta">${drainTimeText(m, waiting.length)}</div></div>
+            <button type="button" class="q-callnext" data-next="${esc(m.id)}" aria-label="Call next ${waiting[0] ? esc(waiting[0].number) + ' · ' : ''}${esc(m.name)}" ${waiting.length ? '' : 'disabled'}>Call next${waiting[0] ? ` <span class="q-num">${esc(waiting[0].number)}</span>` : ''}</button>
           </div>
-          ${section('On test drive', pick('driving'), () => [['finish', 'Finish', '']], m.id, 'driving')}
-          ${section('Now calling', pick('called'), () => [['call', 'Recall'], ['start', 'Start drive', ''], ['noshow', 'No-show', 'danger']], m.id, 'called')}
-          ${section('Waiting', waiting, () => [['call', 'Call'], ['cancel', 'Remove', 'danger']], m.id, 'waiting')}
-          ${section('Recent', recent, (t) => (t.status === 'noshow' ? [['requeue', 'Re-queue']] : []), m.id, 'recent')}
+          <div class="q-now">${slots('driving', 'On the road', 'Car is free')}${slots('called', 'Calling', 'Nobody is being called')}</div>
+          <div class="q-sect"><span>In line (${filtered ? list.length + ' of ' : ''}${waiting.length})</span></div>
+          ${filtered ? '<p class="q-reorder-note">Show Everyone and clear search to reorder</p>' : ''}
+          ${list.length ? `<ul class="q-rows" data-waiting-model="${esc(m.id)}">${list.map((t) => row(t, waiting.indexOf(t) + 1, waiting.length)).join('')}</ul>` : `<div class="q-empty">${filtered ? 'No matches. Show Everyone or clear the search.' : 'No one is waiting for this car.'}</div>`}
+          ${recentSection(recent, m.id)}
         </section>`;
-      }).join('');
-      syncQueueDOM($('#cols'), template.content);
+      }).join(''));
+      renderDrawer();
     }
+
+    function updateMarkup(target, html) {
+      const template = document.createElement('template');
+      template.innerHTML = html;
+      syncQueueDOM(target, template.content);
+    }
+
+    function docTile(t, side, has, label) {
+      if (!has) return `<div class="q-doc empty">No ${label.toLowerCase()} on file</div>`;
+      const endpoint = '/api/staff/license/' + encodeURIComponent(t.id) + '?side=' + side;
+      if (!documentImages.has(endpoint)) {
+        documentImages.set(endpoint, null);
+        fetch(endpoint, { headers: { 'x-staff-pin': pin } })
+          .then((r) => r.ok ? r.blob() : null)
+          .then((blob) => documentImages.set(endpoint, blob ? URL.createObjectURL(blob) : ''))
+          .catch(() => documentImages.set(endpoint, ''))
+          .finally(() => { if (queueView.selected === t.id) renderDrawer(); });
+      }
+      const url = documentImages.get(endpoint);
+      return `<button type="button" class="q-doc ${side}" data-key="doc-${side}" data-photo="${esc(t.id)}" data-number="${esc(t.number)}" data-side="${side}" aria-label="View ${label.toLowerCase()} ${esc(t.number)}">${url ? `<img src="${url}" alt="${label}" />` : `<span>${url === '' ? 'Not on file' : 'Loading…'}</span>`}<span class="cap">${label}</span></button>`;
+    }
+
+    function renderDrawer() {
+      const t = state.tickets.find((t) => t.id === queueView.selected);
+      if (!t) { if (queueView.selected) closeGuest(); return; }
+      const model = state.models.find((m) => m.id === t.model);
+      const values = [
+        ['Status', STATUS_LABEL[t.status] || t.status], ['Model', model?.name || t.model],
+        ['Phone', t.phone], ['Email', t.email], ['Municipality', t.municipality],
+        ['Customer type', state.customerTypes?.[t.customerType] || t.customerType],
+        ['Gender', genderLabel(t.gender)], ['Dealer', t.dealer], ['Sales executive', t.salesExecutive],
+        ['Test drive resource', state.testDriveResources?.[t.testDriveResource] || t.testDriveResource],
+        ['Registered', new Date(t.createdAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' })],
+        ['License number', t.licenseNumber],
+      ];
+      updateMarkup($('#q-drawer'), `<div class="q-dr-head" data-key="head">
+        <div class="top"><span class="q-num">${esc(t.number)}</span><button type="button" class="q-x" data-close-drawer aria-label="Close details ${esc(t.number)}">×</button></div>
+        <h3 id="q-guest-name">${esc(t.name)}</h3><div class="st">${esc(STATUS_LABEL[t.status] || t.status)}${t.status === 'called' ? ' · called ' + ago(t.calledAt) : ''}</div>${t.guestMatched === true ? '<span class="q-f">Pre-registered</span>' : ''}
+      </div><div class="q-dr-body" data-key="body"><dl class="q-kv">${values.map(([label, value]) => `<dt>${label}</dt><dd>${esc(value || '—')}</dd>`).join('')}<dt>License expiry</dt><dd>${esc(cardDate(t.licenseExpiry) || '—')}${t.licenseExpiry && t.licenseExpiry < state.date ? ' <span class="pill expired">Expired</span>' : ''}</dd><dt>SMS status</dt><dd>${smsBadge(t) || 'No call SMS yet'}</dd></dl>
+        <div class="q-docs">${docTile(t, 'front', t.hasLicensePhoto, 'License front')}${docTile(t, 'back', t.hasLicensePhotoBack, 'License back')}${docTile(t, 'signature', t.hasSignature, 'Signature')}</div>
+      </div><div class="q-dr-foot" data-key="foot">${actionButtons(t)}</div>`);
+    }
+
+    function openGuest(id, opener) {
+      if (reorderView.drag || Date.now() < reorderView.suppressClickUntil) return;
+      guestOpener = opener || document.activeElement;
+      queueView.selected = id;
+      $('#q-drawer').hidden = $('#q-scrim').hidden = false;
+      document.body.classList.add('q-open');
+      $('#console').inert = $('.topbar').inert = true;
+      render();
+      $('#q-drawer').querySelector('[data-close-drawer]').focus();
+    }
+
+    function closeGuest() {
+      const id = queueView.selected;
+      queueView.selected = null;
+      $('#q-drawer').hidden = $('#q-scrim').hidden = true;
+      document.body.classList.remove('q-open');
+      $('#console').inert = $('.topbar').inert = false;
+      const row = Array.from($('#cols').querySelectorAll('[data-open]')).find((el) => el.dataset.open === id);
+      const target = guestOpener?.isConnected ? guestOpener : row || $('#queue-search');
+      target.focus();
+      guestOpener = null;
+    }
+
+    $('#q-filters').addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-filter]');
+      if (!chip) return;
+      queueView.filter = chip.dataset.filter;
+      if (reorderView.drag) cancelDrag();
+      if (state) render();
+    });
 
     $('#queue-search').addEventListener('input', (e) => {
       queueView.search = e.target.value;
@@ -320,6 +436,7 @@
       if (!reorderView.drag) return;
       const id = reorderView.drag.id;
       reorderView.drag = null;
+      reorderView.suppressClickUntil = Date.now() + 350;
       clearDropIndicator();
       render();
       focusHandle(id);
@@ -337,7 +454,7 @@
     $('#cols').addEventListener('dragstart', (e) => {
       const handle = e.target.closest('[data-handle]');
       const list = handle && handle.closest('[data-waiting-model]');
-      if (!list || reorderView.saving || queueView.search.trim()) { e.preventDefault(); return; }
+      if (!list || reorderView.saving || queueView.search.trim() || queueView.filter !== 'all') { e.preventDefault(); return; }
       reorderView.drag = { id: handle.dataset.handle, model: list.dataset.waitingModel,
         ids: Array.from(list.querySelectorAll('[data-ticket]'), (el) => el.dataset.ticket) };
       ++reorderView.version;
@@ -348,7 +465,7 @@
     function dropTarget(e) {
       const drag = reorderView.drag;
       const list = e.target.closest('[data-waiting-model]');
-      if (!drag || !list || list.dataset.waitingModel !== drag.model || queueView.search.trim()) return null;
+      if (!drag || !list || list.dataset.waitingModel !== drag.model || queueView.search.trim() || queueView.filter !== 'all') return null;
       const row = e.target.closest('[data-ticket]') || list.lastElementChild;
       if (!row) return null;
       const bounds = row.getBoundingClientRect();
@@ -376,6 +493,7 @@
       if (targetId === drag.id) { cancelDrag(); return; }
       ids.splice(ids.indexOf(targetId) + (target.after ? 1 : 0), 0, drag.id);
       reorderView.drag = null;
+      reorderView.suppressClickUntil = Date.now() + 350;
       clearDropIndicator();
       saveOrder(drag.model, ids, drag.id);
     });
@@ -592,14 +710,15 @@
     };
 
     // All three documents are fetched with the staff PIN, never linked directly.
-    async function viewLicense(id, number) {
+    async function viewLicense(id, number, selectedSide = 'front') {
+      const opener = document.activeElement;
       const documents = [];
       try {
         for (const [side, label] of [['front', 'License front'], ['back', 'License back'], ['signature', 'Signature']]) {
           const res = await fetch('/api/staff/license/' + id + '?side=' + side, { headers: { 'x-staff-pin': pin } });
-          if (res.status === 404) { documents.push({ label }); continue; }
+          if (res.status === 404) { documents.push({ side, label }); continue; }
           if (!res.ok) throw new Error('Could not open registration documents');
-          documents.push({ label, url: URL.createObjectURL(await res.blob()) });
+          documents.push({ side, label, url: URL.createObjectURL(await res.blob()) });
         }
       } catch (err) {
         documents.forEach((doc) => doc.url && URL.revokeObjectURL(doc.url));
@@ -607,40 +726,278 @@
       }
       const wrap = document.createElement('div');
       wrap.className = 'modal-backdrop';
-      wrap.innerHTML = `<div class="modal modal-wide" role="dialog" aria-modal="true" aria-label="Registration documents"><h2>License ? ${esc(number)}</h2><div class="modal-body license-documents">${documents.map((doc) => `<h3>${esc(doc.label)}</h3>${doc.url ? `<img src="${doc.url}" alt="${esc(doc.label)}" />` : '<p>No document on file</p>'}`).join('')}</div><div class="modal-actions"><button type="button" class="btn ghost" data-close>Close</button></div></div>`;
-      const close = () => { wrap.classList.remove('open'); setTimeout(() => { wrap.remove(); documents.forEach((doc) => doc.url && URL.revokeObjectURL(doc.url)); }, 180); document.removeEventListener('keydown', onKey); };
-      const onKey = (ev) => ev.key === 'Escape' && close();
+      wrap.innerHTML = `<div class="modal modal-wide" role="dialog" aria-modal="true" aria-label="Registration documents"><h2>Registration documents — ${esc(number)}</h2><div class="modal-body license-documents">${documents.map((doc) => `<h3 data-document="${doc.side}">${esc(doc.label)}</h3>${doc.url ? `<img src="${doc.url}" alt="${esc(doc.label)}" />` : '<p>No document on file</p>'}`).join('')}</div><div class="modal-actions"><button type="button" class="btn ghost" data-close>Close</button></div></div>`;
+      const close = () => { wrap.classList.remove('open'); setTimeout(() => { wrap.remove(); documents.forEach((doc) => doc.url && URL.revokeObjectURL(doc.url)); }, 180); document.removeEventListener('keydown', onKey); opener?.focus(); };
+      const onKey = (ev) => {
+        if (ev.key === 'Escape') { ev.preventDefault(); close(); }
+        if (ev.key === 'Tab') { ev.preventDefault(); wrap.querySelector('[data-close]').focus(); }
+      };
       wrap.addEventListener('click', (ev) => (ev.target === wrap || ev.target.closest('[data-close]')) && close());
       document.addEventListener('keydown', onKey);
       document.body.append(wrap);
-      requestAnimationFrame(() => { wrap.classList.add('open'); wrap.querySelector('[data-close]').focus(); });
+      requestAnimationFrame(() => { wrap.classList.add('open'); wrap.querySelector('[data-close]').focus(); wrap.querySelector(`[data-document="${selectedSide}"]`)?.scrollIntoView({ block: 'start' }); });
     }
 
-    $('#cols').addEventListener('click', async (e) => {
+    // The display's chime / announce endpoint / browser fallback, queued locally.
+    // Only successful calls from this device enqueue audio; polling never speaks.
+    let announceHere = localStorage.getItem('oj-staff-announce') === '1';
+    const announcements = (() => {
+      const pending = [];
+      let busy = false;
+      let voices = [];
+      let synth;
+      let currentUtterance;
+      let audio;
+      let voiceRetryAt = 0;
+      let generation = 0;
+      let stopAudio, stopSpeech, voiceController;
+      try {
+        if (window.speechSynthesis && window.SpeechSynthesisUtterance) {
+          synth = window.speechSynthesis;
+          const loadVoices = () => { try { voices = synth.getVoices(); } catch {} };
+          loadVoices();
+          synth.onvoiceschanged = loadVoices;
+        }
+      } catch {}
+      const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      function resume() {
+        try { if (synth?.paused) synth.resume(); } catch {}
+      }
+      function speak(text) {
+        return new Promise((resolve) => {
+          if (!synth || !announceHere) return resolve();
+          let utterance;
+          let watchdog;
+          let settled = false;
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(watchdog);
+            if (currentUtterance === utterance) currentUtterance = null;
+            stopSpeech = null;
+            resolve();
+          };
+          try {
+            voices = synth.getVoices();
+            const english = voices.filter((v) => /^en(?:-|$)/i.test(v.lang));
+            const voice = english.find((v) => /^en-PH$/i.test(v.lang))
+              || english.find((v) => /Natural|Online|Google/i.test(v.name))
+              || english.find((v) => /^en-(US|GB)$/i.test(v.lang))
+              || english.find((v) => v.default);
+            utterance = new window.SpeechSynthesisUtterance(text);
+            if (voice) utterance.voice = voice;
+            utterance.lang = voice?.lang || 'en-US';
+            utterance.rate = 0.95;
+            utterance.pitch = 1;
+            utterance.volume = 1;
+            utterance.onend = utterance.onerror = finish;
+            currentUtterance = utterance;
+            stopSpeech = finish;
+            watchdog = setTimeout(() => {
+              if (settled) return;
+              try {
+                if (currentUtterance === utterance) synth.cancel();
+              } catch {} finally { finish(); }
+            }, Math.max(6000, text.length * 150));
+            resume();
+            synth.speak(utterance);
+          } catch { finish(); }
+        });
+      }
+
+      function unlockAudio() {
+        try {
+          // Reuse this element for real calls so its play permission comes from the click.
+          audio = new Audio('data:audio/wav;base64,UklGRiUAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQEAAACA');
+          void Promise.resolve(audio.play()).catch(() => {});
+        } catch {}
+      }
+      function playAudio() {
+        return new Promise((resolve, reject) => {
+          let settled = false;
+          let watchdog;
+          const finish = (error) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(watchdog);
+            audio.onended = audio.onerror = audio.onloadedmetadata = null;
+            stopAudio = null;
+            try { audio.pause(); } catch {}
+            if (error) reject(error); else resolve();
+          };
+          const armWatchdog = () => {
+            clearTimeout(watchdog);
+            const duration = Number.isFinite(audio.duration) ? audio.duration * 1000 : 0;
+            watchdog = setTimeout(() => finish(new Error('Audio playback timed out')), Math.max(8000, duration + 3000));
+          };
+          try {
+            stopAudio = () => finish(new Error('Announcement stopped'));
+            audio.currentTime = 0;
+            audio.onended = () => finish();
+            audio.onerror = () => finish(new Error('Audio playback failed'));
+            audio.onloadedmetadata = armWatchdog;
+            armWatchdog();
+            Promise.resolve(audio.play()).catch(() => finish(new Error('Audio playback failed')));
+          } catch (error) { finish(error); }
+        });
+      }
+      async function serverVoice(number, version) {
+        if (!number || !audio || Date.now() < voiceRetryAt) return false;
+        let url;
+        let playedOnce = false;
+        try {
+          const controller = new AbortController();
+          voiceController = controller;
+          const timer = setTimeout(() => controller.abort(), 10000); // uncached generation can take ~4-5 s
+          let blob;
+          try {
+            // Recalls use the same number/URL: always ask the server for its current calledAt cache key.
+            const response = await fetch(`/api/announce?number=${encodeURIComponent(number)}`, { signal: controller.signal, cache: 'no-store' });
+            if (response.status !== 200) {
+              if (response.status === 503) {
+                const data = await response.json().catch(() => ({}));
+                if (data.error === 'Voice not configured') voiceRetryAt = Date.now() + 5 * 60 * 1000;
+              }
+              return false;
+            }
+            blob = await response.blob();
+          } finally { clearTimeout(timer); voiceController = null; }
+          if (!announceHere || version !== generation) return true;
+          url = URL.createObjectURL(blob);
+          audio.src = url;
+          await playAudio();
+          playedOnce = true;
+          document.body.dataset.voice = 'server';
+          await delay(1000);
+          if (announceHere && version === generation) await playAudio();
+          document.body.dataset.voice = 'server';
+          return true;
+        } catch {
+          return playedOnce;
+        } finally {
+          if (url) {
+            try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch {}
+            URL.revokeObjectURL(url);
+          }
+        }
+      }
+      async function drain() {
+        if (busy || document.hidden || !announceHere) return;
+        busy = true;
+        try {
+          while (pending.length && !document.hidden && announceHere) {
+            const { text, number } = pending.shift();
+            const version = generation;
+            chime();
+            await delay(900); // The existing chime's last oscillator stops at 870 ms.
+            if (!announceHere || version !== generation) continue;
+            if (await serverVoice(number, version)) continue;
+            if (!announceHere || version !== generation) continue;
+            document.body.dataset.voice = 'browser';
+            await speak(text);
+            if (synth && announceHere && version === generation) {
+              await delay(1000);
+              if (version === generation) await speak(text);
+            }
+          }
+        } finally {
+          busy = false;
+        }
+      }
+      function enqueue(text, number) {
+        pending.push({ text, number });
+        if (pending.length > 5) pending.splice(0, pending.length - 5);
+        void drain();
+      }
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          if (pending.length > 5) pending.splice(0, pending.length - 5);
+        } else {
+          resume();
+          void drain();
+        }
+      });
+      return {
+        unlock() { if (!audio) unlockAudio(); resume(); },
+        stop() {
+          generation++;
+          pending.length = 0;
+          voiceController?.abort();
+          stopAudio?.();
+          stopSpeech?.();
+          try { audio?.pause(); synth?.cancel(); } catch {}
+        },
+        call(ticket) { if (announceHere) enqueue(callAnnouncementText(ticket), ticket.number); },
+      };
+    })();
+
+    function showAnnounce() {
+      $('#announce').setAttribute('aria-pressed', String(announceHere));
+    }
+    $('#announce').onclick = () => {
+      announceHere = !announceHere;
+      localStorage.setItem('oj-staff-announce', announceHere ? '1' : '0');
+      showAnnounce();
+      if (announceHere) { announcements.unlock(); chime(); }
+      else announcements.stop();
+    };
+    showAnnounce();
+
+    async function queueClick(e) {
       const b = e.target.closest('button');
-      if (!b) return;
-      if (b.dataset.handle) return;
-      if (b.dataset.move) return moveWaiting(b.dataset.move, Number(b.dataset.offset));
-      if (b.dataset.details || b.dataset.section || b.dataset.recent) {
-        const set = b.dataset.details ? queueView.expanded : b.dataset.section ? queueView.collapsed : queueView.recentAll;
-        const key = b.dataset.details || b.dataset.section || b.dataset.recent;
-        if (set.has(key)) set.delete(key); else set.add(key);
-        render();
+      if (b) {
+        if (b.dataset.handle) return;
+        if (b.dataset.move) return moveWaiting(b.dataset.move, Number(b.dataset.offset));
+        if (b.dataset.section || b.dataset.recent) {
+          const set = b.dataset.section ? queueView.recentOpen : queueView.recentAll;
+          const key = b.dataset.section || b.dataset.recent;
+          if (set.has(key)) set.delete(key); else set.add(key);
+          return render();
+        }
+        if (b.hasAttribute('data-close-drawer')) return closeGuest();
+        if (b.dataset.photo) return viewLicense(b.dataset.photo, b.dataset.number, b.dataset.side);
+        if (!b.dataset.next && !b.dataset.act) return;
+        if (announceHere) announcements.unlock(); // Stay within the user's click gesture.
+        b.disabled = true;
+        try {
+          let ticket;
+          if (b.dataset.next) {
+            ({ ticket } = await api('/api/staff/next/' + b.dataset.next, { method: 'POST', pin }));
+          } else {
+            ({ ticket } = await api(`/api/staff/tickets/${b.dataset.id}/${b.dataset.act}`, { method: 'POST', pin }));
+          }
+          if (b.dataset.next || b.dataset.act === 'call') {
+            toast(`Calling ${ticket.number} \u2014 ${ticket.name}`);
+            announcements.call(ticket);
+          }
+          await load();
+        } catch (err) {
+          toast(err.message);
+          b.disabled = false;
+        }
         return;
       }
-      if (b.dataset.photo) return viewLicense(b.dataset.photo, b.closest('li').querySelector('.n').textContent);
-      b.disabled = true;
-      try {
-        if (b.dataset.next) {
-          const { ticket } = await api('/api/staff/next/' + b.dataset.next, { method: 'POST', pin });
-          toast(`Calling ${ticket.number} — ${ticket.name}`);
-        } else {
-          await api(`/api/staff/tickets/${b.dataset.id}/${b.dataset.act}`, { method: 'POST', pin });
+      const row = e.target.closest('[data-open]');
+      if (row) openGuest(row.dataset.open, row);
+    }
+    $('#cols').addEventListener('click', queueClick);
+    $('#q-drawer').addEventListener('click', queueClick);
+    $('#q-scrim').addEventListener('click', closeGuest);
+    document.addEventListener('keydown', (e) => {
+      if ($('.modal-backdrop')) return;
+      if (queueView.selected) {
+        if (e.key === 'Escape') { e.preventDefault(); closeGuest(); return; }
+        if (e.key === 'Tab') {
+          const controls = Array.from($('#q-drawer').querySelectorAll('button:not(:disabled), [tabindex="0"]'));
+          const first = controls[0], last = controls[controls.length - 1];
+          if (e.shiftKey && (document.activeElement === first || document.activeElement === $('#q-drawer'))) {
+            e.preventDefault(); last?.focus();
+          } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
         }
-        load();
-      } catch (err) {
-        toast(err.message);
-        b.disabled = false;
+        return;
+      }
+      if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[data-open]')) {
+        e.preventDefault(); openGuest(e.target.dataset.open, e.target);
       }
     });
 

@@ -9,13 +9,21 @@ const source = html.slice(html.indexOf('    const queueView'), html.indexOf('   
 function harness() {
   const nodes = new Map();
   const $ = (selector) => {
-    if (!nodes.has(selector)) nodes.set(selector, { value: '', handlers: {}, addEventListener(name, fn) { this.handlers[name] = fn; } });
+    if (selector === '.modal-backdrop') return null;
+    if (!nodes.has(selector)) nodes.set(selector, { value: '', handlers: {}, hidden: false, attrs: {},
+      classList: { add() {}, remove() {} },
+      addEventListener(name, fn) { this.handlers[name] = fn; },
+      setAttribute(name, value) { this.attrs[name] = value; },
+      querySelector: (child) => $(selector + ' ' + child), querySelectorAll: () => [],
+      focus() { context.document.activeElement = this; },
+    });
     return nodes.get(selector);
   };
   const tickets = Array.from({ length: 8 }, (_, i) => ({ id: 't' + i, number: 'J7-00' + (i + 1), name: i ? 'Customer ' + i : 'Maria Cruz',
     phone: i ? '09990000000' : '0917 123-4567', status: 'done', finishedAt: i + 1, model: 'J7', createdAt: i + 1 }));
   const context = vm.createContext({ $, state: { date: '2026-11-11', tickets, models: [{ id: 'J7', name: 'JAECOO', image: '', waitingCount: 0, estWaitMin: 0 }] },
-    document: { createElement: () => ({ content: {} }) },
+    document: { createElement: () => ({ content: {} }), handlers: {},
+      addEventListener(name, fn) { this.handlers[name] = fn; }, body: { classList: { add() {}, remove() {} } } },
     esc: (value) => String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]),
     ago: () => '3 min ago', cardDate: (value) => value, genderLabel: () => '', STATUS_LABEL: { done: 'Completed', noshow: 'No-show' },
   });
@@ -32,7 +40,8 @@ test('staff inline script parses', () => {
   const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map((m) => m[1]).filter((s) => s.trim());
   assert.equal(scripts.length, 1);
   scripts.forEach((script) => new vm.Script(script));
-  assert.match(html, /<label for="queue-search">Search number, name or phone<\/label>/);
+  assert.match(html, /id="queue-search"[^>]*aria-label="Find a guest by name, number or mobile"/);
+  assert.match(html, /id="q-drawer" role="dialog" aria-modal="true" aria-labelledby="q-guest-name"/);
 });
 
 test('filter matches number/name case-insensitively and normalizes spaces and dashes in phones', () => {
@@ -45,9 +54,73 @@ test('filter matches number/name case-insensitively and normalizes spaces and da
   assert.equal(context.filterTickets(tickets, '---').length, 0);
 });
 
+test('wait formatting and longest wait use registration time, only waiting tickets, and clamp future times', () => {
+  const { context } = harness();
+  for (const [minutes, expected] of [[0, '0m'], [14.9, '14m'], [60, '1h 0m'], [156, '2h 36m'], [-2, '0m']]) {
+    assert.equal(context.formatWait(minutes), expected);
+  }
+  const now = 200 * 60000;
+  assert.equal(context.longestWait([], now), '—');
+  assert.equal(context.longestWait([{ status: 'called', createdAt: 0 }], now), '—');
+  assert.equal(context.longestWait([
+    { status: 'waiting', createdAt: 44 * 60000, queueAt: now },
+    { status: 'waiting', createdAt: 186 * 60000, queueAt: 0 },
+    { status: 'done', createdAt: 0 },
+  ], now), '2h 36m');
+  assert.equal(context.longestWait([{ status: 'waiting', createdAt: now + 60000 }], now), '0m');
+});
+
+test('Pre-registered means guestMatched strictly true and combines with normalized search', () => {
+  const { context, run } = harness();
+  const tickets = [{ id: 'a', guestMatched: true }, { id: 'b', guestMatched: false }, { id: 'c', preRegistered: true }, { id: 'd', guestMatched: 'true' }];
+  assert.equal(context.filterRegistered(tickets, 'all'), tickets);
+  assert.deepEqual(Array.from(context.filterRegistered(tickets, 'pre'), (t) => t.id), ['a']);
+  context.state.tickets[0].guestMatched = true;
+  context.state.tickets[1].guestMatched = true;
+  run("queueView.filter = 'pre'; queueView.search = '0917-123 4567'");
+  assert.deepEqual(Array.from(context.matching(context.state.tickets), (t) => t.id), ['t0']);
+});
+
+test('drain time uses model minutes and units, rounds up partial minutes and handles an empty line', () => {
+  const { context } = harness();
+  for (const [model, count, expected] of [
+    [{ minutes: 20, units: 1 }, 3, '3 waiting · about 60m of drives to clear the line'],
+    [{ minutes: 20, units: 2 }, 3, '3 waiting · about 30m of drives to clear the line'],
+    [{ minutes: 20, units: 3 }, 2, '2 waiting · about 14m of drives to clear the line'],
+    [{ minutes: 20, units: 1 }, 0, '0 waiting · about 0m of drives to clear the line'],
+  ]) assert.equal(context.drainTimeText(model, count), expected);
+});
+
+test('chip and search filter every slot/list while summary, chip counts and Call next remain unfiltered', async () => {
+  const { context, $, run, render } = harness();
+  const statuses = ['waiting', 'waiting', 'called', 'called', 'driving', 'driving', 'done', 'done'];
+  context.state.tickets.forEach((t, i) => { t.status = statuses[i]; t.guestMatched = i % 2 === 0; t.name = i % 2 === 0 ? 'Guest match' : 'Hidden guest'; });
+  run("queueView.filter = 'pre'; queueView.search = 'Guest match'; queueView.recentOpen.add('J7')");
+  const markup = render();
+  for (const id of ['t0', 't2', 't4', 't6']) assert.ok(markup.includes(`data-open="${id}"`));
+  for (const id of ['t1', 't3', 't5', 't7']) assert.ok(!markup.includes(`data-open="${id}"`));
+  assert.match($('#summary').markup, /<b>2<\/b>waiting/);
+  assert.match($('#summary').markup, /<b>2<\/b>calling/);
+  assert.match($('#summary').markup, /<b>2<\/b>on the road/);
+  assert.match($('#summary').markup, /<b>2<\/b>drives done/);
+  assert.match($('#q-filters').markup, /aria-pressed="true">Pre-registered<span class="c">1<\/span>/);
+  assert.match(markup, /Call next <span class="q-num">J7-001/);
+  assert.match(markup, /Show Everyone and clear search to reorder/);
+  assert.doesNotMatch(markup, /data-handle=|data-move=/);
+  let calls = 0;
+  context.api = () => { calls++; };
+  await context.moveWaiting('t0', 1);
+  await context.saveOrder('J7', ['t1', 't0'], 't0');
+  assert.equal(calls, 0);
+  run("queueView.search = ''");
+  assert.doesNotMatch(render(), /data-handle=|data-move=/, 'chip alone disables reorder');
+});
+
 test('Recent renders latest five, Show all/less state survives renders, search includes older matches', () => {
   const { render, run, context } = harness();
   let markup = render();
+  assert.match(markup, /data-section="J7"[^>]*aria-expanded="false"/);
+  assert.match(markup, /id="recent-J7" hidden/);
   assert.equal((markup.match(/data-ticket=/g) || []).length, 5);
   assert.ok(markup.indexOf('data-ticket="t7"') < markup.indexOf('data-ticket="t3"'));
   assert.doesNotMatch(markup, /data-ticket="t0"/);
@@ -69,20 +142,20 @@ test('Recent renders latest five, Show all/less state survives renders, search i
   assert.equal(context.visibleTickets(context.state.tickets, '', false, false).length, 8);
 });
 
-test('details, section collapse and search persist across new polled ticket objects; Escape clears', () => {
+test('drawer, Recent collapse and search persist across new polled ticket objects; Escape clears search', () => {
   const { context, $, render, run } = harness();
   context.state.tickets[0].status = 'waiting';
-  run("queueView.expanded.add('t0'); queueView.collapsed.add('J7:recent')");
+  run("queueView.selected = 't0'");
   const input = $('#queue-search');
   input.value = 'Maria';
   input.handlers.input({ target: input });
   for (let i = 0; i < 2; i++) {
     context.state.tickets = context.state.tickets.map((t) => ({ ...t }));
     const markup = render();
-    assert.match(markup, /data-details="t0"[^>]*aria-expanded="true"/);
-    assert.match(markup, /id="ticket-details-t0">/);
-    assert.match(markup, /data-section="J7:recent"[^>]*aria-expanded="false"/);
-    assert.match(markup, /Waiting \(1 of 1\)/);
+    assert.match(markup, /class="q-r sel"[^>]*data-open="t0"/);
+    assert.match($('#q-drawer').markup, /id="q-guest-name">Maria Cruz<\/h3>/);
+    assert.match(markup, /data-section="J7"[^>]*aria-expanded="false"/);
+    assert.match(markup, /In line \(1 of 1\)/);
     assert.match(markup, /No matches/);
     assert.equal(input.value, 'Maria');
   }
@@ -91,7 +164,10 @@ test('details, section collapse and search persist across new polled ticket obje
   assert.ok(prevented);
   assert.equal(input.value, '');
   assert.equal(run('queueView.search'), '');
-  assert.match(render(), /data-details="t0"[^>]*aria-expanded="true"/);
+  assert.match(render(), /class="q-r sel"[^>]*data-open="t0"/);
+  context.state.tickets[0].name = 'Updated guest';
+  render();
+  assert.match($('#q-drawer').markup, /id="q-guest-name">Updated guest<\/h3>/);
 });
 
 test('waiting positions keep original queue order under search and row controls name the ticket', () => {
@@ -99,9 +175,10 @@ test('waiting positions keep original queue order under search and row controls 
   context.state.tickets.forEach((t) => { t.status = 'waiting'; });
   run("queueView.search = 'Customer 3'");
   const markup = render();
-  assert.match(markup, /Waiting \(1 of 8\)/);
+  assert.match(markup, /In line \(1 of 8\)/);
   assert.match(markup, /aria-label="Position 4">4\./);
-  for (const label of ['Call', 'Remove', 'Details']) assert.ok(markup.includes(`aria-label="${label} J7-004"`));
+  for (const label of ['Call', 'Remove']) assert.ok(markup.includes(`aria-label="${label} J7-004"`));
+  assert.match(markup, /data-open="t3" tabindex="0" aria-label="Details J7-004 Customer 3"/);
 });
 
 test('moveId moves up/down, preserves input and ignores moves past either end or unknown ids', () => {
@@ -118,17 +195,17 @@ test('waiting controls use queueAt, disable endpoints, hide under search and pre
   const { context, render, run } = harness();
   context.state.tickets.forEach((t) => { t.status = 'waiting'; });
   context.state.tickets[7].queueAt = 0;
-  run("queueView.expanded.add('t7')");
+  run("queueView.selected = 't7'");
   let markup = render();
   assert.ok(markup.indexOf('data-ticket="t7"') < markup.indexOf('data-ticket="t0"'));
   assert.match(markup, /data-waiting-model="J7"/);
   assert.match(markup, /aria-label="Drag to reorder J7-008"/);
   assert.match(markup, /aria-label="Move J7-008 up" disabled/);
   assert.match(markup, /aria-label="Move J7-007 down" disabled/);
-  assert.match(markup, /data-details="t7"[^>]*aria-expanded="true"/);
+  assert.match(markup, /class="q-r sel"[^>]*data-open="t7"/);
   run("queueView.search = 'Customer'");
   markup = render();
-  assert.match(markup, /Clear search to reorder/);
+  assert.match(markup, /Show Everyone and clear search to reorder/);
   assert.doesNotMatch(markup, /data-handle=|data-move=/);
 });
 
@@ -259,23 +336,67 @@ test('keyboard handle arrows use the same moves; cancelling a drag clears indica
   assert.equal(prevented, 3);
 });
 
-test('delegated details/section/recent buttons toggle view state without calling ticket APIs', async () => {
+test('delegated rows open drawer; Recent buttons toggle view state without calling ticket APIs', async () => {
   const { context, $, render, run } = harness();
-  const clickSource = html.slice(html.indexOf("    $('#cols').addEventListener('click'"), html.indexOf("    $('#reset').onclick"));
+  const clickSource = html.slice(html.indexOf('    async function queueClick('), html.indexOf("    $('#reset').onclick"));
   vm.runInContext(clickSource, context);
-  const click = (dataset) => $('#cols').handlers.click({ target: { closest: () => ({ dataset }) } });
-  await click({ details: 't7' });
-  assert.match(render(), /data-details="t7"[^>]*aria-expanded="true"/);
-  await click({ details: 't7' });
-  assert.equal(run("queueView.expanded.has('t7')"), false);
-  await click({ section: 'J7:recent' });
-  assert.match(render(), /data-section="J7:recent"[^>]*aria-expanded="false"/);
-  await click({ section: 'J7:recent' });
-  assert.equal(run("queueView.collapsed.has('J7:recent')"), false);
+  const click = (dataset) => $('#cols').handlers.click({ target: { closest: () => ({ dataset, hasAttribute: () => false }) } });
+  const opener = { dataset: { open: 't7' }, isConnected: true, focus() { this.focused = true; } };
+  await $('#cols').handlers.click({ target: { closest: (selector) => selector === '[data-open]' ? opener : null } });
+  assert.equal(run('queueView.selected'), 't7');
+  assert.equal($('#q-drawer').hidden, false);
+  assert.equal(context.document.activeElement, $('#q-drawer [data-close-drawer]'));
+  assert.match($('#q-drawer').markup, /id="q-guest-name">Customer 7<\/h3>/);
+  $('#q-scrim').handlers.click();
+  assert.equal(run('queueView.selected'), null);
+  assert.equal($('#q-drawer').hidden, true);
+  assert.equal(opener.focused, true);
+  await click({ section: 'J7' });
+  assert.match(render(), /data-section="J7"[^>]*aria-expanded="true"/);
+  await click({ section: 'J7' });
+  assert.equal(run("queueView.recentOpen.has('J7')"), false);
   await click({ recent: 'J7' });
   assert.equal((render().match(/data-ticket=/g) || []).length, 8);
   await click({ recent: 'J7' });
   assert.equal((render().match(/data-ticket=/g) || []).length, 5);
+});
+
+test('drawer traps focus, closes with Escape or close button, closes when ticket disappears, and drag cannot open it', async () => {
+  const { context, $, run, render } = harness();
+  vm.runInContext(html.slice(html.indexOf('    async function queueClick('), html.indexOf("    $('#reset').onclick")), context);
+  const opener = { dataset: { open: 't7' }, isConnected: true, focus() { context.document.activeElement = this; } };
+  const first = $('#q-drawer [data-close-drawer]'), last = $('#last-action');
+  $('#q-drawer').querySelectorAll = () => [first, last];
+  context.openGuest('t7', opener);
+  assert.equal($('#console').inert, true);
+  assert.equal($('.topbar').inert, true);
+  let prevented = 0;
+  const key = (key, shiftKey = false) => context.document.handlers.keydown({ key, shiftKey, preventDefault() { prevented++; } });
+  key('Tab', true);
+  assert.equal(context.document.activeElement, last);
+  key('Tab');
+  assert.equal(context.document.activeElement, first);
+  key('Escape');
+  assert.equal(prevented, 3);
+  assert.equal(run('queueView.selected'), null);
+  assert.equal(context.document.activeElement, opener);
+  assert.equal($('#console').inert, false);
+  context.openGuest('t7', opener);
+  await $('#q-drawer').handlers.click({ target: { closest: () => ({ dataset: {}, hasAttribute: () => true }) } });
+  assert.equal(run('queueView.selected'), null);
+  context.openGuest('t7', opener);
+  context.state.tickets = context.state.tickets.filter((t) => t.id !== 't7');
+  opener.isConnected = false;
+  render();
+  assert.equal(run('queueView.selected'), null);
+  assert.equal($('#q-drawer').hidden, true);
+  assert.equal(context.document.activeElement, $('#queue-search'));
+  run("reorderView.drag = { id: 't0' }");
+  context.openGuest('t0', opener);
+  assert.equal(run('queueView.selected'), null);
+  run('reorderView.drag = null; reorderView.suppressClickUntil = Date.now() + 350');
+  context.openGuest('t0', opener);
+  assert.equal(run('queueView.selected'), null);
 });
 
 test('DOM reconciliation keeps row/control identity, updates attributes and removes stale rows', () => {

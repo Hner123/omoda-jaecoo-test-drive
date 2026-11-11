@@ -291,34 +291,42 @@ test('optional scan metadata is sanitised and stored; expired dates remain rejec
     { status: 400, message: 'This license expired on 2000/01/01. A valid license is required to test drive.' });
 });
 
-test('staff rows show independent scan values, expired pills and documents with no null placeholders', () => {
+test('staff drawer shows independent scan values, expired pills and documents with no null placeholders', () => {
   const html = fs.readFileSync(path.join(__dirname, '../public/staff.html'), 'utf8');
-  const source = html.slice(html.indexOf('    function row('), html.indexOf('    function section('));
-  const context = vm.createContext({ queueView: { expanded: new Set() }, state: { date: '2026-11-10' }, ago: () => 'now',
+  const source = html.slice(html.indexOf('    function docTile('), html.indexOf('    function openGuest('));
+  let markup;
+  const context = vm.createContext({ queueView: { selected: 'test' }, state: { date: '2026-11-10', models: [], tickets: [] }, ago: () => 'now',
+    documentImages: new Map(['front', 'back', 'signature'].map((side) => ['/api/staff/license/test?side=' + side, 'blob:preview'])),
+    $: () => ({}), updateMarkup: (target, html) => { markup = html; }, actionButtons: () => '',
+    STATUS_LABEL: { waiting: 'Waiting', called: 'Called', driving: 'Driving', done: 'Done' },
     esc: (value) => String(value), cardDate: (value) => value, genderLabel: () => '' });
+  vm.runInContext(html.slice(html.indexOf('    function smsBadge('), html.indexOf('    function row(')), context);
   vm.runInContext(source, context);
-  const base = { id: 'test', number: 'J5-001', name: 'Customer', phone: '09170000000', status: 'waiting', hasLicensePhoto: true };
+  const base = { id: 'test', number: 'J5-001', name: 'Customer', phone: '09170000000', status: 'waiting', createdAt: 1,
+    hasLicensePhoto: true, hasLicensePhotoBack: true, hasSignature: true };
+  const drawer = (patch = {}) => { context.state.tickets = [{ ...base, ...patch }]; context.renderDrawer(); return markup; };
   for (const details of [{}, { licenseNumber: null, licenseExpiry: null }, { licenseNumber: 'TEST-123', licenseExpiry: null }]) {
-    const row = context.row({ ...base, ...details }, []);
-    assert.match(row, /View license/);
-    assert.doesNotMatch(row, /Lic\. (null|undefined)|exp (null|undefined)|pill expired/);
-    if (details.licenseNumber) assert.match(row, /Lic\. TEST-123/);
-    else assert.doesNotMatch(row, /Lic\./);
-    assert.doesNotMatch(row, /exp /);
+    const content = drawer(details);
+    for (const [side, label] of [['front', 'license front'], ['back', 'license back'], ['signature', 'signature']]) {
+      assert.match(content, new RegExp(`aria-label="View ${label} J5-001"`));
+      assert.ok(content.includes(`data-side="${side}"`));
+    }
+    assert.doesNotMatch(content, />null<|>undefined<|pill expired/);
+    assert.ok(content.includes(`<dt>License number</dt><dd>${details.licenseNumber || '\u2014'}</dd>`));
+    assert.ok(content.includes('<dt>License expiry</dt><dd>\u2014</dd>'));
   }
-  const expired = context.row({ ...base, licenseNumber: null, licenseExpiry: '2000-01-01' }, []);
-  assert.match(expired, /exp 2000-01-01/);
+  const expired = drawer({ licenseNumber: null, licenseExpiry: '2000-01-01' });
+  assert.match(expired, /<dt>License expiry<\/dt><dd>2000-01-01/);
   assert.match(expired, /pill expired/);
-  assert.doesNotMatch(expired, /Lic\./);
-  for (const [smsState, label] of Object.entries({ Pending: 'SMS sending…', Processed: 'SMS sending…', Sent: 'SMS sent', Delivered: 'SMS delivered ✓', Failed: 'SMS failed', Skipped: 'SMS off' })) {
+  assert.match(expired, /<dt>License number<\/dt><dd>\u2014<\/dd>/);
+  for (const [smsState, label] of Object.entries({ Pending: 'SMS sending\u2026', Processed: 'SMS sending\u2026', Sent: 'SMS sent', Delivered: 'SMS delivered \u2713', Failed: 'SMS failed', Skipped: 'SMS off' })) {
     for (const status of ['called', 'driving', 'done']) {
-      context.STATUS_LABEL = { done: 'Done' };
-      const row = context.row({ ...base, status, callSms: { state: smsState, error: 'sim_unavailable' } }, []);
-      assert.ok(row.includes(label));
-      if (smsState === 'Failed') assert.match(row, /title="sim_unavailable"/);
+      const content = drawer({ status, callSms: { state: smsState, error: 'sim_unavailable' } });
+      assert.ok(content.includes(label));
+      if (smsState === 'Failed') assert.match(content, /title="sim_unavailable"/);
     }
   }
-  assert.doesNotMatch(context.row(base, []), /SMS /);
+  assert.match(drawer(), /No call SMS yet/);
 });
 
 test('kiosk scan retains optional metadata, clears stale values on unreadable retakes and posts stored details', async () => {
