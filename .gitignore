@@ -4,3 +4,6 @@ data/licenses/
 .netlify/
 .env
 .env.*
+
+.vercel
+.env*
