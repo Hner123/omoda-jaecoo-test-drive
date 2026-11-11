@@ -203,6 +203,14 @@ const server = http.createServer(async (req, res) => {
       return res.end(fs.readFileSync(file));
     }
 
+    if (pathname === '/api/staff/reorder' && req.method === 'POST') {
+      requireStaff(req);
+      const body = await readBody(req);
+      Q.reorder(state, body?.model, body?.ids);
+      save();
+      return send(res, 200, { ok: true });
+    }
+
     m = pathname.match(/^\/api\/staff\/next\/(\w+)$/);
     if (m && req.method === 'POST') {
       requireStaff(req);

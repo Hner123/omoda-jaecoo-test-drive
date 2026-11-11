@@ -104,6 +104,161 @@ test('waiting positions keep original queue order under search and row controls 
   for (const label of ['Call', 'Remove', 'Details']) assert.ok(markup.includes(`aria-label="${label} J7-004"`));
 });
 
+test('moveId moves up/down, preserves input and ignores moves past either end or unknown ids', () => {
+  const { context } = harness();
+  const original = ['a', 'b', 'c'];
+  for (const [id, offset, expected] of [
+    ['b', -1, ['b', 'a', 'c']], ['b', 1, ['a', 'c', 'b']],
+    ['a', -1, original], ['c', 1, original], ['missing', 1, original],
+  ]) assert.deepEqual(Array.from(context.moveId(original, id, offset)), expected);
+  assert.deepEqual(original, ['a', 'b', 'c']);
+});
+
+test('waiting controls use queueAt, disable endpoints, hide under search and preserve details', () => {
+  const { context, render, run } = harness();
+  context.state.tickets.forEach((t) => { t.status = 'waiting'; });
+  context.state.tickets[7].queueAt = 0;
+  run("queueView.expanded.add('t7')");
+  let markup = render();
+  assert.ok(markup.indexOf('data-ticket="t7"') < markup.indexOf('data-ticket="t0"'));
+  assert.match(markup, /data-waiting-model="J7"/);
+  assert.match(markup, /aria-label="Drag to reorder J7-008"/);
+  assert.match(markup, /aria-label="Move J7-008 up" disabled/);
+  assert.match(markup, /aria-label="Move J7-007 down" disabled/);
+  assert.match(markup, /data-details="t7"[^>]*aria-expanded="true"/);
+  run("queueView.search = 'Customer'");
+  markup = render();
+  assert.match(markup, /Clear search to reorder/);
+  assert.doesNotMatch(markup, /data-handle=|data-move=/);
+});
+
+test('moveWaiting optimistically updates positions, posts full ids, keeps handle focus and rolls back errors', async () => {
+  for (const fails of [false, true]) {
+    const { context, $, render, run } = harness();
+    context.state.tickets.forEach((t) => { t.status = 'waiting'; });
+    const requests = [], focused = [], errors = [];
+    let refreshed = 0, finish;
+    context.pin = '1234';
+    context.toast = (message) => errors.push(message);
+    context.load = async () => { refreshed++; };
+    $('#cols').querySelectorAll = () => context.state.tickets.map((t) => ({ dataset: { handle: t.id }, focus: () => focused.push(t.id) }));
+    context.api = (route, options) => {
+      requests.push({ route, options });
+      return new Promise((resolve, reject) => { finish = () => fails ? reject(new Error('Save failed')) : resolve({ ok: true }); });
+    };
+    const pending = context.moveWaiting('t1', -1);
+    assert.equal(run('reorderView.saving'), true);
+    const markup = render();
+    assert.ok(markup.indexOf('data-ticket="t1"') < markup.indexOf('data-ticket="t0"'));
+    assert.match(markup, /aria-label="Position 1">1\./);
+    assert.deepEqual(focused, ['t1']);
+    assert.equal(requests[0].route, '/api/staff/reorder');
+    assert.equal(requests[0].options.pin, '1234');
+    assert.deepEqual(Array.from(requests[0].options.body.ids), ['t1', 't0', 't2', 't3', 't4', 't5', 't6', 't7']);
+    assert.equal(requests[0].options.body.model, 'J7');
+    await context.moveWaiting('t2', -1);
+    assert.equal(requests.length, 1, 'block overlapping moves');
+    finish();
+    await pending;
+    assert.equal(refreshed, 1);
+    assert.equal(run('reorderView.saving'), false);
+    assert.deepEqual(errors, fails ? ['Save failed'] : []);
+    if (fails) assert.ok(render().indexOf('data-ticket="t0"') < render().indexOf('data-ticket="t1"'));
+    assert.deepEqual(context.state.tickets.map((t) => t.createdAt), [1, 2, 3, 4, 5, 6, 7, 8]);
+  }
+});
+
+test('polling skips active drags/saves and discards a poll already in flight when drag starts', async () => {
+  const { context, run } = harness();
+  const loadSource = html.slice(html.indexOf('    async function load()'), html.indexOf('    const genderLabel'));
+  vm.runInContext(loadSource, context);
+  context.pin = '1234';
+  let requests = 0, finish;
+  context.api = () => { requests++; return new Promise((resolve) => { finish = resolve; }); };
+  const original = context.state;
+  const pending = context.load();
+  run("reorderView.drag = { id: 't0' }; ++reorderView.version");
+  await context.load();
+  context.render(); // Must leave the DOM alone during the drag.
+  assert.equal(requests, 1);
+  finish({ tickets: [] });
+  await pending;
+  assert.equal(context.state, original);
+  run('reorderView.drag = null; reorderView.saving = true');
+  await context.load();
+  assert.equal(requests, 1);
+});
+
+test('dragging is handle-only, rejects other models, marks the drop edge and submits the full reordered list', () => {
+  const { context, $, render, run } = harness();
+  context.state.tickets.slice(0, 3).forEach((t) => { t.status = 'waiting'; });
+  const cols = $('#cols');
+  const list = { dataset: { waitingModel: 'J7' }, querySelectorAll: () => rows };
+  const rows = ['t0', 't1', 't2'].map((id) => {
+    const classes = new Set();
+    return { dataset: { ticket: id }, classes,
+      classList: { add: (...names) => names.forEach((name) => classes.add(name)), remove: (...names) => names.forEach((name) => classes.delete(name)) },
+      getBoundingClientRect: () => ({ top: 0, height: 40 }),
+      closest: (selector) => selector === '[data-waiting-model]' ? list : selector === '[data-ticket]' ? rows.find((row) => row.dataset.ticket === id) : null,
+    };
+  });
+  list.lastElementChild = rows[2];
+  cols.querySelectorAll = (selector) => selector === '[data-handle]' ? [] : rows.filter((row) => row.classes.size);
+  cols.contains = () => false;
+  const handle = { dataset: { handle: 't0' }, closest: () => list };
+  const startedOn = { closest: (selector) => selector === '[data-handle]' ? handle : null };
+  const transfer = { setData(type, value) { this.data = [type, value]; } };
+  let prevented = false;
+  const event = (target, clientY = 30) => ({ target, clientY, dataTransfer: transfer, preventDefault() { prevented = true; } });
+  cols.handlers.dragstart(event(rows[0]));
+  assert.equal(prevented, true, 'dragging a row body cannot start reorder');
+  prevented = false;
+  cols.handlers.dragstart(event(startedOn));
+  assert.deepEqual(transfer.data, ['text/plain', 't0']);
+  assert.equal(run('reorderView.drag.model'), 'J7');
+  const otherModel = { closest: () => ({ dataset: { waitingModel: 'J5' } }) };
+  cols.handlers.dragover(event(otherModel));
+  assert.equal(prevented, false);
+  cols.handlers.drop(event(otherModel));
+  assert.equal(prevented, false);
+  cols.handlers.dragover(event(rows[2]));
+  assert.equal(prevented, true);
+  assert.ok(rows[2].classes.has('drop-after'));
+  cols.handlers.dragover(event(rows[1], 5));
+  assert.ok(rows[1].classes.has('drop-before'));
+  assert.equal(rows[2].classes.size, 0);
+  const calls = [];
+  context.saveOrder = (model, ids, focus) => calls.push([model, Array.from(ids), focus]);
+  cols.handlers.drop(event(rows[2]));
+  assert.deepEqual(calls, [['J7', ['t1', 't2', 't0'], 't0']]);
+  assert.equal(run('reorderView.drag'), null);
+  assert.ok(rows.every((row) => row.classes.size === 0));
+  cols.handlers.dragend();
+  assert.equal(calls.length, 1, 'dragend after a drop cannot repeat or cancel the save');
+  render();
+});
+
+test('keyboard handle arrows use the same moves; cancelling a drag clears indicators and refreshes', () => {
+  const { context, $, run } = harness();
+  const cols = $('#cols');
+  const moves = [];
+  let prevented = 0, refreshed = 0;
+  context.moveWaiting = (id, offset) => moves.push([id, offset]);
+  context.load = () => { refreshed++; };
+  cols.querySelectorAll = () => [];
+  const event = (key) => ({ key, target: { closest: () => ({ dataset: { handle: 't0' } }) }, preventDefault() { prevented++; } });
+  cols.handlers.keydown(event('ArrowUp'));
+  cols.handlers.keydown(event('ArrowDown'));
+  cols.handlers.keydown(event('ArrowLeft'));
+  assert.deepEqual(moves, [['t0', -1], ['t0', 1]]);
+  assert.equal(prevented, 2);
+  run("reorderView.drag = { id: 't0' }");
+  cols.handlers.keydown(event('Escape'));
+  assert.equal(run('reorderView.drag'), null);
+  assert.equal(refreshed, 1);
+  assert.equal(prevented, 3);
+});
+
 test('delegated details/section/recent buttons toggle view state without calling ticket APIs', async () => {
   const { context, $, render, run } = harness();
   const clickSource = html.slice(html.indexOf("    $('#cols').addEventListener('click'"), html.indexOf("    $('#reset').onclick"));

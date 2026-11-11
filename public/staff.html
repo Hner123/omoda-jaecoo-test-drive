@@ -100,8 +100,12 @@
     };
 
     async function load() {
+      if (reorderView.drag || reorderView.saving) return;
+      const version = ++reorderView.version;
       try {
-        state = await api('/api/staff/tickets', { pin });
+        const loaded = await api('/api/staff/tickets', { pin });
+        if (version !== reorderView.version || reorderView.drag || reorderView.saving) return;
+        state = loaded;
         render();
       } catch (err) {
         if (err.status === 401) $('#logout').click();
@@ -112,6 +116,64 @@
 
     // View state lives outside the polled data and is scoped by ticket/model identity.
     const queueView = { search: '', expanded: new Set(), collapsed: new Set(), recentAll: new Set() };
+    const reorderView = { drag: null, saving: false, version: 0 };
+    const orderKey = (ticket) => ticket.queueAt ?? ticket.createdAt;
+
+    function moveId(ids, id, offset) {
+      const next = [...ids];
+      const from = next.indexOf(id);
+      const to = from + offset;
+      if (from < 0 || to < 0 || to >= next.length) return next;
+      next.splice(from, 1);
+      next.splice(to, 0, id);
+      return next;
+    }
+
+    function focusHandle(id) {
+      const handle = Array.from($('#cols').querySelectorAll('[data-handle]')).find((el) => el.dataset.handle === id);
+      if (handle) handle.focus();
+    }
+
+    async function saveOrder(model, ids, focusId) {
+      if (reorderView.saving || queueView.search.trim()) return;
+      const waiting = state.tickets.filter((t) => t.model === model && t.status === 'waiting').sort((a, b) => orderKey(a) - orderKey(b));
+      const keys = waiting.map(orderKey);
+      const original = waiting.map((ticket) => ({ ticket, queueAt: ticket.queueAt }));
+      const byId = new Map(waiting.map((t) => [t.id, t]));
+      let previous = -Infinity;
+      ids.forEach((id, i) => {
+        const key = Math.max(keys[i], previous + 1);
+        byId.get(id).queueAt = key;
+        previous = key;
+      });
+      reorderView.saving = true;
+      ++reorderView.version; // Ignore any poll started before the optimistic move.
+      render();
+      if (focusId) focusHandle(focusId);
+      try {
+        await api('/api/staff/reorder', { method: 'POST', pin, body: { model, ids } });
+      } catch (err) {
+        original.forEach(({ ticket, queueAt }) => {
+          if (queueAt === undefined) delete ticket.queueAt;
+          else ticket.queueAt = queueAt;
+        });
+        toast(err.message);
+      } finally {
+        reorderView.saving = false;
+        render();
+        await load();
+      }
+    }
+
+    function moveWaiting(id, offset) {
+      if (reorderView.drag || reorderView.saving || queueView.search.trim()) return;
+      const ticket = state.tickets.find((t) => t.id === id && t.status === 'waiting');
+      if (!ticket) return;
+      const ids = state.tickets.filter((t) => t.model === ticket.model && t.status === 'waiting')
+        .sort((a, b) => orderKey(a) - orderKey(b)).map((t) => t.id);
+      const next = moveId(ids, id, offset);
+      if (next.some((value, i) => value !== ids[i])) return saveOrder(ticket.model, next, id);
+    }
 
     function filterTickets(items, query) {
       const text = query.trim().toLowerCase();
@@ -126,7 +188,7 @@
       return recent && !query.trim() && !showAll ? matches.slice(0, 5) : matches;
     }
 
-    function row(t, actions, position) {
+    function row(t, actions, position, total) {
       const time = t.status === 'waiting' ? `joined ${ago(t.createdAt)}` :
         t.status === 'called' ? `called ${ago(t.calledAt)}` :
         t.status === 'driving' ? `driving since ${ago(t.startedAt)}` : (STATUS_LABEL[t.status] + ' · ' + ago(t.finishedAt || t.createdAt));
@@ -144,6 +206,11 @@
       const detailsId = 'ticket-details-' + t.id;
       return `<li data-key="ticket-${esc(t.id)}" data-ticket="${esc(t.id)}">
         <div class="ticket-line">
+          ${position && !queueView.search.trim() ? `<span class="queue-reorder" data-key="reorder-${esc(t.id)}">
+            <button type="button" class="reorder-handle" draggable="${!reorderView.saving}" data-handle="${esc(t.id)}" aria-label="Drag to reorder ${esc(t.number)}" aria-disabled="${reorderView.saving}" title="Drag or use ArrowUp / ArrowDown">⋮⋮</button>
+            <button type="button" data-move="${esc(t.id)}" data-offset="-1" aria-label="Move ${esc(t.number)} up" ${position === 1 || reorderView.saving ? 'disabled' : ''}>▲</button>
+            <button type="button" data-move="${esc(t.id)}" data-offset="1" aria-label="Move ${esc(t.number)} down" ${position === total || reorderView.saving ? 'disabled' : ''}>▼</button>
+          </span>` : ''}
           ${position ? `<span class="queue-position" aria-label="Position ${position}">${position}.</span>` : ''}
           <span class="n">${esc(t.number)}</span>
           <span class="ticket-name">${esc(t.name)}</span>
@@ -173,7 +240,8 @@
       return `<section class="queue-section" data-key="${esc(key)}">
         <h2 class="section-label"><button type="button" data-section="${esc(key)}" aria-controls="${esc(contentId)}" aria-expanded="${!collapsed}" aria-label="${esc(label)} ${esc(model)}"><span aria-hidden="true">${collapsed ? '&#9656;' : '&#9662;'}</span> ${label} (${searching ? matches.length + ' of ' : ''}${items.length})</button></h2>
         <div id="${esc(contentId)}"${collapsed ? ' hidden' : ''}>
-          ${visible.length ? `<ul class="list">${visible.map((t) => row(t, actions(t), kind === 'waiting' ? items.indexOf(t) + 1 : null)).join('')}</ul>` : `<div class="empty">${searching ? 'No matches' : 'None'}</div>`}
+          ${kind === 'waiting' && searching ? '<p class="reorder-note">Clear search to reorder</p>' : ''}
+          ${visible.length ? `<ul class="list"${kind === 'waiting' ? ` data-waiting-model="${esc(model)}"` : ''}>${visible.map((t) => row(t, actions(t), kind === 'waiting' ? items.indexOf(t) + 1 : null, items.length)).join('')}</ul>` : `<div class="empty">${searching ? 'No matches' : 'None'}</div>`}
           ${kind === 'recent' && !searching && items.length > 5 ? `<button type="button" class="recent-toggle" data-recent="${esc(model)}" aria-expanded="${queueView.recentAll.has(model)}" aria-label="${queueView.recentAll.has(model) ? 'Show less' : 'Show all (' + items.length + ')'} recent ${esc(model)}">${queueView.recentAll.has(model) ? 'Show less' : 'Show all (' + items.length + ')'}</button>` : ''}
         </div>
       </section>`;
@@ -205,6 +273,7 @@
     }
 
     function render() {
+      if (reorderView.drag) return;
       $('#date').textContent = new Date(state.date + 'T00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
       const by = (s) => state.tickets.filter((t) => t.status === s);
       $('#summary').innerHTML = [['Waiting', by('waiting').length], ['On drive', by('driving').length], ['Completed', by('done').length]]
@@ -214,7 +283,7 @@
       template.innerHTML = state.models.map((m) => {
         const mine = state.tickets.filter((t) => t.model === m.id);
         const pick = (...s) => mine.filter((t) => s.includes(t.status));
-        const waiting = pick('waiting').sort((a, b) => a.createdAt - b.createdAt);
+        const waiting = pick('waiting').sort((a, b) => orderKey(a) - orderKey(b));
         const recent = pick('done', 'noshow', 'cancelled').sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
         return `<section class="panel" data-key="model-${esc(m.id)}">
           <div class="col-head">
@@ -233,6 +302,7 @@
 
     $('#queue-search').addEventListener('input', (e) => {
       queueView.search = e.target.value;
+      if (reorderView.drag) cancelDrag();
       if (state) render();
     });
     $('#queue-search').addEventListener('keydown', (e) => {
@@ -241,6 +311,75 @@
       e.target.value = queueView.search = '';
       if (state) render();
     });
+
+    function clearDropIndicator() {
+      $('#cols').querySelectorAll('.drop-before, .drop-after').forEach((el) => el.classList.remove('drop-before', 'drop-after'));
+    }
+
+    function cancelDrag() {
+      if (!reorderView.drag) return;
+      const id = reorderView.drag.id;
+      reorderView.drag = null;
+      clearDropIndicator();
+      render();
+      focusHandle(id);
+      load();
+    }
+
+    $('#cols').addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && reorderView.drag) { e.preventDefault(); cancelDrag(); return; }
+      const handle = e.target.closest('[data-handle]');
+      if (!handle || !['ArrowUp', 'ArrowDown'].includes(e.key)) return;
+      e.preventDefault();
+      moveWaiting(handle.dataset.handle, e.key === 'ArrowUp' ? -1 : 1);
+    });
+
+    $('#cols').addEventListener('dragstart', (e) => {
+      const handle = e.target.closest('[data-handle]');
+      const list = handle && handle.closest('[data-waiting-model]');
+      if (!list || reorderView.saving || queueView.search.trim()) { e.preventDefault(); return; }
+      reorderView.drag = { id: handle.dataset.handle, model: list.dataset.waitingModel,
+        ids: Array.from(list.querySelectorAll('[data-ticket]'), (el) => el.dataset.ticket) };
+      ++reorderView.version;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', handle.dataset.handle);
+    });
+
+    function dropTarget(e) {
+      const drag = reorderView.drag;
+      const list = e.target.closest('[data-waiting-model]');
+      if (!drag || !list || list.dataset.waitingModel !== drag.model || queueView.search.trim()) return null;
+      const row = e.target.closest('[data-ticket]') || list.lastElementChild;
+      if (!row) return null;
+      const bounds = row.getBoundingClientRect();
+      return { row, after: e.clientY >= bounds.top + bounds.height / 2 };
+    }
+
+    $('#cols').addEventListener('dragover', (e) => {
+      clearDropIndicator();
+      const target = dropTarget(e);
+      if (!target) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      target.row.classList.add(target.after ? 'drop-after' : 'drop-before');
+    });
+    $('#cols').addEventListener('dragleave', (e) => {
+      if (!e.currentTarget.contains(e.relatedTarget)) clearDropIndicator();
+    });
+    $('#cols').addEventListener('drop', (e) => {
+      const target = dropTarget(e);
+      if (!target) return;
+      e.preventDefault();
+      const drag = reorderView.drag;
+      const ids = drag.ids.filter((id) => id !== drag.id);
+      const targetId = target.row.dataset.ticket;
+      if (targetId === drag.id) { cancelDrag(); return; }
+      ids.splice(ids.indexOf(targetId) + (target.after ? 1 : 0), 0, drag.id);
+      reorderView.drag = null;
+      clearDropIndicator();
+      saveOrder(drag.model, ids, drag.id);
+    });
+    $('#cols').addEventListener('dragend', cancelDrag);
 
     // Dealer guest list: uploads add to the list; a repeated mobile number or e-mail replaces its entry.
     function renderGuests(s) {
@@ -480,6 +619,8 @@
     $('#cols').addEventListener('click', async (e) => {
       const b = e.target.closest('button');
       if (!b) return;
+      if (b.dataset.handle) return;
+      if (b.dataset.move) return moveWaiting(b.dataset.move, Number(b.dataset.offset));
       if (b.dataset.details || b.dataset.section || b.dataset.recent) {
         const set = b.dataset.details ? queueView.expanded : b.dataset.section ? queueView.collapsed : queueView.recentAll;
         const key = b.dataset.details || b.dataset.section || b.dataset.recent;

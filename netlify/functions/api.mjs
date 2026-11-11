@@ -156,6 +156,16 @@ export default async (req) => {
       return new Response(r.data, { status: 200, headers: { 'Content-Type': (r.metadata && r.metadata.type) || 'image/jpeg', 'Cache-Control': 'private, no-store' } });
     }
 
+    if (pathname === '/api/staff/reorder' && method === 'POST') {
+      requireStaff(req);
+      const body = await readBody(req);
+      const state = await load();
+      Q.reorder(state, body?.model, body?.ids);
+      // Same whole-day read/modify/write as other staff actions; no notifications.
+      await save(state);
+      return json(200, { ok: true });
+    }
+
     m = pathname.match(/^\/api\/staff\/next\/(\w+)$/);
     if (m && method === 'POST') {
       requireStaff(req);

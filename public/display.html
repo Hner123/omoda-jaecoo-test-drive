@@ -313,7 +313,8 @@
       board.innerHTML = state.models.map((m) => {
         const mine = state.tickets.filter((t) => t.model === m.id);
         const called = mine.filter((t) => t.status === 'called').sort((a, b) => b.calledAt - a.calledAt);
-        const waiting = mine.filter((t) => t.status === 'waiting').sort((a, b) => a.createdAt - b.createdAt);
+        // /api/state already supplies queue order without exposing internal keys.
+        const waiting = mine.filter((t) => t.status === 'waiting');
         const driving = mine.filter((t) => t.status === 'driving');
         const cur = called[0];
         return `<section class="lane">
