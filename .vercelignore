@@ -1,5 +1,17 @@
-# Deploy only the static frontend and its Vercel configuration.
-*
-!public/
-!public/**
-!vercel.json
+# Only public/ and vercel.json are needed on Vercel; the API runs on the self-hosted backend.
+netlify/
+netlify.toml
+server.js
+lib/
+test/
+docs/
+data/
+node_modules/
+.netlify/
+.claude/
+CLAUDE.md
+README.md
+package.json
+package-lock.json
+.env
+.env.*
