@@ -118,11 +118,14 @@ test('staff CSV and Excel report use new fields, labels and summary groups, incl
   vm.runInContext(source + csv, context);
   const state = Q.emptyState();
   const ticket = Q.createTicket(state, { ...registration, hasLicensePhoto: true, hasLicensePhotoBack: true, hasSignature: true });
+  ticket.callSms = { state: 'Delivered' };
   const data = Q.mergeDay(state.date, [state]);
   data.tickets.push({ name: 'Old Customer', number: 'OLD-001', model: 'old-model', createdAt: ticket.createdAt, status: 'waiting' });
   const book = context.buildReportWorkbook(data);
   const [header, row, old] = book.Registrations.rows;
   const value = (label, values = row) => values[header.indexOf(label)];
+  assert.equal(value('Call SMS status'), 'Delivered');
+  assert.equal(value('Call SMS status', old), '');
   assert.equal(value('License No.'), 'TEST-123');
   assert.equal(value('License Expiry'), '2099-12-31');
   assert.equal(value('License No.', old), '');
@@ -287,7 +290,7 @@ test('optional scan metadata is sanitised and stored; expired dates remain rejec
 test('staff rows show independent scan values, expired pills and documents with no null placeholders', () => {
   const html = fs.readFileSync(path.join(__dirname, '../public/staff.html'), 'utf8');
   const source = html.slice(html.indexOf('    function row('), html.indexOf('    function section('));
-  const context = vm.createContext({ state: { date: '2026-11-10' }, ago: () => 'now',
+  const context = vm.createContext({ queueView: { expanded: new Set() }, state: { date: '2026-11-10' }, ago: () => 'now',
     esc: (value) => String(value), cardDate: (value) => value, genderLabel: () => '' });
   vm.runInContext(source, context);
   const base = { id: 'test', number: 'J5-001', name: 'Customer', phone: '09170000000', status: 'waiting', hasLicensePhoto: true };
@@ -303,6 +306,15 @@ test('staff rows show independent scan values, expired pills and documents with 
   assert.match(expired, /exp 2000-01-01/);
   assert.match(expired, /pill expired/);
   assert.doesNotMatch(expired, /Lic\./);
+  for (const [smsState, label] of Object.entries({ Pending: 'SMS sending…', Processed: 'SMS sending…', Sent: 'SMS sent', Delivered: 'SMS delivered ✓', Failed: 'SMS failed', Skipped: 'SMS off' })) {
+    for (const status of ['called', 'driving', 'done']) {
+      context.STATUS_LABEL = { done: 'Done' };
+      const row = context.row({ ...base, status, callSms: { state: smsState, error: 'sim_unavailable' } }, []);
+      assert.ok(row.includes(label));
+      if (smsState === 'Failed') assert.match(row, /title="sim_unavailable"/);
+    }
+  }
+  assert.doesNotMatch(context.row(base, []), /SMS /);
 });
 
 test('kiosk scan retains optional metadata, clears stale values on unreadable retakes and posts stored details', async () => {

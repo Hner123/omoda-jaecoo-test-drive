@@ -31,6 +31,10 @@
       </div>
       <div style="margin-left:auto;display:flex;gap:24px;flex-wrap:wrap" id="summary"></div>
     </div>
+    <div class="queue-search">
+      <label for="queue-search">Search number, name or phone</label>
+      <input id="queue-search" type="search" placeholder="Search number, name or phone" autocomplete="off" />
+    </div>
     <div class="cols" id="cols"></div>
     <section class="panel" style="margin-top:20px">
       <div class="guest-head">
@@ -106,30 +110,98 @@
 
     const genderLabel = (gender) => gender === 'male' ? 'Male' : gender === 'female' ? 'Female' : '';
 
-    function row(t, actions) {
+    // View state lives outside the polled data and is scoped by ticket/model identity.
+    const queueView = { search: '', expanded: new Set(), collapsed: new Set(), recentAll: new Set() };
+
+    function filterTickets(items, query) {
+      const text = query.trim().toLowerCase();
+      if (!text) return items;
+      const phone = text.replace(/[\s-]/g, '');
+      return items.filter((t) => [t.number, t.name].some((value) => String(value || '').toLowerCase().includes(text)) ||
+        (phone && String(t.phone || '').replace(/[\s-]/g, '').toLowerCase().includes(phone)));
+    }
+
+    function visibleTickets(items, query, recent, showAll) {
+      const matches = filterTickets(items, query);
+      return recent && !query.trim() && !showAll ? matches.slice(0, 5) : matches;
+    }
+
+    function row(t, actions, position) {
       const time = t.status === 'waiting' ? `joined ${ago(t.createdAt)}` :
         t.status === 'called' ? `called ${ago(t.calledAt)}` :
         t.status === 'driving' ? `driving since ${ago(t.startedAt)}` : (STATUS_LABEL[t.status] + ' · ' + ago(t.finishedAt || t.createdAt));
       const licenseDetails = [
         t.licenseNumber && `Lic. ${esc(t.licenseNumber)}`,
         t.licenseExpiry && `exp ${esc(cardDate(t.licenseExpiry))}${t.licenseExpiry < state.date ? ' <span class="pill expired">Expired</span>' : ''}`,
-        (t.hasLicensePhoto || t.hasLicensePhotoBack || t.hasSignature) && `<button type="button" class="link-inline" data-photo="${t.id}">View license</button>`,
+        (t.hasLicensePhoto || t.hasLicensePhotoBack || t.hasSignature) && `<button type="button" class="link-inline" data-photo="${esc(t.id)}" aria-label="View license ${esc(t.number)}">View license</button>`,
       ].filter(Boolean);
+      const smsLabels = { Pending: 'SMS sending…', Processed: 'SMS sending…', Sent: 'SMS sent', Delivered: 'SMS delivered ✓', Failed: 'SMS failed', Skipped: 'SMS off' };
+      const sms = t.callSms;
+      const smsPill = sms && smsLabels[sms.state]
+        ? `<span class="pill sms-${sms.state.toLowerCase()}"${sms.state === 'Failed' && sms.error ? ` title="${esc(sms.error)}"` : ''}>${smsLabels[sms.state]}</span>` : '';
       const lic = licenseDetails.length ? `<div>${licenseDetails.join(' · ')}</div>` : '';
-      return `<li>
-        <div class="n">${t.number}</div>
-        <div class="ticket-body">
-        <div class="who"><div>${esc(t.name)}</div><div>${esc(t.phone)} · ${time}</div>${
-          t.email ? `<div>${esc(t.email)} · ${esc(t.municipality)}</div><div>${esc((state.customerTypes || {})[t.customerType] || t.customerType || '')}${t.guestMatched ? ' <span class="pill driving">On guest list</span>' : ''}</div>` : ''
-        }<div>Gender: ${esc(genderLabel(t.gender))}</div><div>Location/Dealer: ${esc(t.dealer || '')}</div><div>Assigned Sales Executive: ${esc(t.salesExecutive || '')}</div><div>Test drive resource: ${esc((state.testDriveResources || {})[t.testDriveResource] || t.testDriveResource || '')}</div>${lic}</div>
-        <div class="acts">${actions.map(([a, label, cls]) => `<button class="btn sm ${cls || 'ghost'}" data-id="${t.id}" data-act="${a}">${label}</button>`).join('')}</div>
+      const expanded = queueView.expanded.has(t.id);
+      const detailsId = 'ticket-details-' + t.id;
+      return `<li data-key="ticket-${esc(t.id)}" data-ticket="${esc(t.id)}">
+        <div class="ticket-line">
+          ${position ? `<span class="queue-position" aria-label="Position ${position}">${position}.</span>` : ''}
+          <span class="n">${esc(t.number)}</span>
+          <span class="ticket-name">${esc(t.name)}</span>
+          <span class="ticket-phone">${esc(t.phone)}</span>
+          <span class="ticket-time">${esc(time)}</span>${smsPill}
+          <div class="acts">${actions.map(([a, label, cls]) => `<button type="button" class="btn sm ${cls || 'ghost'}" data-id="${esc(t.id)}" data-act="${a}" aria-label="${esc(label)} ${esc(t.number)}">${label}</button>`).join('')}</div>
+          <button type="button" class="details-toggle" data-details="${esc(t.id)}" aria-label="Details ${esc(t.number)}" aria-expanded="${expanded}" aria-controls="${esc(detailsId)}">Details</button>
+        </div>
+        <div class="ticket-details" id="${esc(detailsId)}"${expanded ? '' : ' hidden'}>
+          <div>${esc(t.email || '')}${t.email && t.municipality ? ' · ' : ''}${esc(t.municipality || '')}</div>
+          <div>${esc((state.customerTypes || {})[t.customerType] || t.customerType || '')}${t.guestMatched ? ' <span class="pill driving">On guest list</span>' : ''}</div>
+          <div>Gender: ${esc(genderLabel(t.gender))}</div>
+          <div>Location/Dealer: ${esc(t.dealer || '')}</div>
+          <div>Assigned Sales Executive: ${esc(t.salesExecutive || '')}</div>
+          <div>Test drive resource: ${esc((state.testDriveResources || {})[t.testDriveResource] || t.testDriveResource || '')}</div>${lic}
         </div>
       </li>`;
     }
 
-    function section(label, items, actions) {
-      return `<div class="section-label">${label} (${items.length})</div>` +
-        (items.length ? `<ul class="list">${items.map((t) => row(t, actions(t))).join('')}</ul>` : '<div class="empty">None</div>');
+    function section(label, items, actions, model, kind) {
+      const key = model + ':' + kind;
+      const searching = !!queueView.search.trim();
+      const matches = filterTickets(items, queueView.search);
+      const visible = visibleTickets(items, queueView.search, kind === 'recent', queueView.recentAll.has(model));
+      const collapsed = queueView.collapsed.has(key);
+      const contentId = 'queue-section-' + model + '-' + kind;
+      return `<section class="queue-section" data-key="${esc(key)}">
+        <h2 class="section-label"><button type="button" data-section="${esc(key)}" aria-controls="${esc(contentId)}" aria-expanded="${!collapsed}" aria-label="${esc(label)} ${esc(model)}"><span aria-hidden="true">${collapsed ? '&#9656;' : '&#9662;'}</span> ${label} (${searching ? matches.length + ' of ' : ''}${items.length})</button></h2>
+        <div id="${esc(contentId)}"${collapsed ? ' hidden' : ''}>
+          ${visible.length ? `<ul class="list">${visible.map((t) => row(t, actions(t), kind === 'waiting' ? items.indexOf(t) + 1 : null)).join('')}</ul>` : `<div class="empty">${searching ? 'No matches' : 'None'}</div>`}
+          ${kind === 'recent' && !searching && items.length > 5 ? `<button type="button" class="recent-toggle" data-recent="${esc(model)}" aria-expanded="${queueView.recentAll.has(model)}" aria-label="${queueView.recentAll.has(model) ? 'Show less' : 'Show all (' + items.length + ')'} recent ${esc(model)}">${queueView.recentAll.has(model) ? 'Show less' : 'Show all (' + items.length + ')'}</button>` : ''}
+        </div>
+      </section>`;
+    }
+
+    // Reuse keyed rows and controls so polling doesn't replace focused elements.
+    function syncQueueDOM(target, source) {
+      const keyed = new Map(Array.from(target.children).filter((el) => el.dataset.key).map((el) => [el.dataset.key, el]));
+      let cursor = target.firstChild;
+      for (const next of Array.from(source.childNodes)) {
+        const key = next.nodeType === 1 && next.dataset.key;
+        let current = key ? keyed.get(key) : cursor;
+        if (current && (current.nodeType !== next.nodeType || current.nodeName !== next.nodeName ||
+            (!key && current.nodeType === 1 && current.dataset.key))) current = null;
+        if (!current) {
+          current = next.cloneNode(true);
+          target.insertBefore(current, cursor);
+        } else {
+          if (current !== cursor) target.insertBefore(current, cursor);
+          if (current.nodeType === 1) {
+            for (const attr of Array.from(current.attributes)) if (!next.hasAttribute(attr.name)) current.removeAttribute(attr.name);
+            for (const attr of Array.from(next.attributes)) if (current.getAttribute(attr.name) !== attr.value) current.setAttribute(attr.name, attr.value);
+            syncQueueDOM(current, next);
+          } else if (current.nodeValue !== next.nodeValue) current.nodeValue = next.nodeValue;
+        }
+        cursor = current.nextSibling;
+      }
+      while (cursor) { const next = cursor.nextSibling; cursor.remove(); cursor = next; }
     }
 
     function render() {
@@ -138,24 +210,37 @@
       $('#summary').innerHTML = [['Waiting', by('waiting').length], ['On drive', by('driving').length], ['Completed', by('done').length]]
         .map(([l, n]) => `<div style="text-align:right"><div style="font-size:28px;font-weight:600">${n}</div><div class="muted" style="font-size:12px;letter-spacing:.1em;text-transform:uppercase">${l}</div></div>`).join('');
 
-      $('#cols').innerHTML = state.models.map((m) => {
+      const template = document.createElement('template');
+      template.innerHTML = state.models.map((m) => {
         const mine = state.tickets.filter((t) => t.model === m.id);
         const pick = (...s) => mine.filter((t) => s.includes(t.status));
         const waiting = pick('waiting').sort((a, b) => a.createdAt - b.createdAt);
-        const recent = pick('done', 'noshow', 'cancelled').sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0)).slice(0, 5);
-        return `<section class="panel">
+        const recent = pick('done', 'noshow', 'cancelled').sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
+        return `<section class="panel" data-key="model-${esc(m.id)}">
           <div class="col-head">
             <img src="${m.image}" alt="${esc(m.name)}" />
             <div><div class="name">${esc(m.name)}</div><div class="sub">${m.waitingCount} waiting · ~${m.estWaitMin} min</div></div>
-            <button class="btn accent" data-next="${m.id}" ${waiting.length ? '' : 'disabled'}>Call next</button>
+            <button type="button" class="btn accent" data-next="${esc(m.id)}" aria-label="Call next ${esc(m.name)}" ${waiting.length ? '' : 'disabled'}>Call next</button>
           </div>
-          ${section('On test drive', pick('driving'), () => [['finish', 'Finish', '']])}
-          ${section('Now calling', pick('called'), () => [['call', 'Recall'], ['start', 'Start drive', ''], ['noshow', 'No-show', 'danger']])}
-          ${section('Waiting', waiting, () => [['call', 'Call'], ['cancel', 'Remove', 'danger']])}
-          ${section('Recent', recent, (t) => (t.status === 'noshow' ? [['requeue', 'Re-queue']] : []))}
+          ${section('On test drive', pick('driving'), () => [['finish', 'Finish', '']], m.id, 'driving')}
+          ${section('Now calling', pick('called'), () => [['call', 'Recall'], ['start', 'Start drive', ''], ['noshow', 'No-show', 'danger']], m.id, 'called')}
+          ${section('Waiting', waiting, () => [['call', 'Call'], ['cancel', 'Remove', 'danger']], m.id, 'waiting')}
+          ${section('Recent', recent, (t) => (t.status === 'noshow' ? [['requeue', 'Re-queue']] : []), m.id, 'recent')}
         </section>`;
       }).join('');
+      syncQueueDOM($('#cols'), template.content);
     }
+
+    $('#queue-search').addEventListener('input', (e) => {
+      queueView.search = e.target.value;
+      if (state) render();
+    });
+    $('#queue-search').addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.target.value = queueView.search = '';
+      if (state) render();
+    });
 
     // Dealer guest list: uploads add to the list; a repeated mobile number or e-mail replaces its entry.
     function renderGuests(s) {
@@ -257,14 +342,14 @@
       return [
         ['Date', 'Queue No.', 'Preferred Model', 'Complete Name', 'Gender', 'Mobile Number', 'E-mail Address', 'Municipality', 'Customer Type', 'Location/Dealer',
           'Assigned Sales Executive', 'Test Drive Resource', 'On Dealer Guest List', 'License No.', 'License Expiry', 'Data Privacy Consent', 'Signature on file', 'License Back Photo',
-          'Test Drive Status', 'Remarks', 'Registered', 'Called', 'Drive Started', 'Finished', 'Wait (min)', 'Drive (min)'],
+          'Test Drive Status', 'Remarks', 'Registered', 'Called', 'Drive Started', 'Finished', 'Wait (min)', 'Drive (min)', 'Call SMS status'],
         ...reportRows(data).map(({ t, status, remarks }) => [
           new Date(t.createdAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }), t.number, (data.models.find((m) => m.id === t.model) || {}).name || t.model,
           t.name, genderLabel(t.gender), t.phone, t.email || '', t.municipality || '', (data.customerTypes || {})[t.customerType] || t.customerType || '', t.dealer || '',
           t.salesExecutive || '', (data.testDriveResources || {})[t.testDriveResource] || t.testDriveResource || '', t.guestMatched ? 'Yes' : 'No',
           t.licenseNumber || '', cardDate(t.licenseExpiry), t.consentAt ? 'Yes' : 'No', t.hasSignature ? 'Yes' : 'No', t.hasLicensePhotoBack ? 'Yes' : 'No',
           status, remarks, manilaTime(t.createdAt), manilaTime(t.calledAt), manilaTime(t.startedAt),
-          t.status === 'done' || t.status === 'noshow' || t.status === 'cancelled' ? manilaTime(t.finishedAt) : '', minutesBetween(t.createdAt, t.calledAt), minutesBetween(t.startedAt, t.finishedAt),
+          t.status === 'done' || t.status === 'noshow' || t.status === 'cancelled' ? manilaTime(t.finishedAt) : '', minutesBetween(t.createdAt, t.calledAt), minutesBetween(t.startedAt, t.finishedAt), t.callSms?.state || '',
         ]),
       ];
     }
@@ -300,7 +385,7 @@
 
       const book = XLSX.utils.book_new();
       const listSheet = XLSX.utils.aoa_to_sheet(list);
-      listSheet['!cols'] = [12, 12, 22, 24, 10, 16, 26, 18, 30, 22, 26, 22, 18, 18, 14, 20, 18, 20, 18, 30, 12, 12, 14, 12, 12, 12].map((wch) => ({ wch }));
+      listSheet['!cols'] = [12, 12, 22, 24, 10, 16, 26, 18, 30, 22, 26, 22, 18, 18, 14, 20, 18, 20, 18, 30, 12, 12, 14, 12, 12, 12, 18].map((wch) => ({ wch }));
       listSheet['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: list.length - 1, c: list[0].length - 1 } }) };
       const summarySheet = XLSX.utils.aoa_to_sheet(summary);
       summarySheet['!cols'] = [{ wch: 38 }, ...header.slice(1).map(() => ({ wch: 14 }))];
@@ -395,6 +480,13 @@
     $('#cols').addEventListener('click', async (e) => {
       const b = e.target.closest('button');
       if (!b) return;
+      if (b.dataset.details || b.dataset.section || b.dataset.recent) {
+        const set = b.dataset.details ? queueView.expanded : b.dataset.section ? queueView.collapsed : queueView.recentAll;
+        const key = b.dataset.details || b.dataset.section || b.dataset.recent;
+        if (set.has(key)) set.delete(key); else set.add(key);
+        render();
+        return;
+      }
       if (b.dataset.photo) return viewLicense(b.dataset.photo, b.closest('li').querySelector('.n').textContent);
       b.disabled = true;
       try {

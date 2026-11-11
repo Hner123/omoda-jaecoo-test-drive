@@ -98,7 +98,7 @@ export default async (req) => {
       await save(state);
       const position = Q.position(state, t);
       await N.welcome(state, t, position);
-      return json(201, { ticket: t, position });
+      return json(201, { ticket: Q.customerTicket(t), position });
     }
 
     let m = pathname.match(/^\/api\/tickets\/(\w+)$/);
@@ -107,7 +107,7 @@ export default async (req) => {
       const t = state.tickets.find((x) => x.id === m[1]);
       if (!t) throw Q.httpError(404, 'Ticket not found');
       // The id is unguessable and only the ticket holder has it, so they see their own number in full.
-      return json(200, { ticket: t, position: Q.position(state, t) });
+      return json(200, { ticket: Q.customerTicket(t), position: Q.position(state, t) });
     }
 
     m = pathname.match(/^\/api\/tickets\/(\w+)\/cancel$/);
@@ -117,7 +117,7 @@ export default async (req) => {
       const t = Q.act(state, m[1], 'cancel');
       await save(state);
       if (await N.notifyNext(state, before)) await save(state);
-      return json(200, { ticket: t });
+      return json(200, { ticket: Q.customerTicket(t) });
     }
 
     // ---- staff-only ----
@@ -129,6 +129,7 @@ export default async (req) => {
     if (pathname === '/api/staff/tickets' && method === 'GET') {
       requireStaff(req);
       const state = await load();
+      if (await N.refreshCallSms(state)) await save(state);
       return json(200, { ...Q.publicState(state), tickets: state.tickets });
     }
 
@@ -162,7 +163,8 @@ export default async (req) => {
       const before = N.firstWaitingIds(state);
       const t = Q.callNext(state, m[1]);
       await save(state);
-      await Promise.all([N.yourTurn(t), N.notifyNext(state, before).then((changed) => changed && save(state))]);
+      await Promise.all([N.yourTurn(t), N.notifyNext(state, before)]);
+      await save(state);
       return json(200, { ticket: t });
     }
 
@@ -173,7 +175,8 @@ export default async (req) => {
       const before = N.firstWaitingIds(state);
       const t = Q.act(state, m[1], m[2]);
       await save(state);
-      await Promise.all([m[2] === 'call' ? N.yourTurn(t) : null, N.notifyNext(state, before).then((changed) => changed && save(state))]);
+      await Promise.all([m[2] === 'call' ? N.yourTurn(t) : null, N.notifyNext(state, before)]);
+      await save(state);
       return json(200, { ticket: t });
     }
 

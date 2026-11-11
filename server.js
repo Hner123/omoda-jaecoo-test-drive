@@ -146,7 +146,7 @@ const server = http.createServer(async (req, res) => {
       save();
       const position = Q.position(state, t);
       N.welcome(state, t, position); // fire-and-forget locally
-      return send(res, 201, { ticket: t, position });
+      return send(res, 201, { ticket: Q.customerTicket(t), position });
     }
 
     let m = pathname.match(/^\/api\/tickets\/(\w+)$/);
@@ -154,7 +154,7 @@ const server = http.createServer(async (req, res) => {
       const t = state.tickets.find((x) => x.id === m[1]);
       if (!t) throw Q.httpError(404, 'Ticket not found');
       // The id is unguessable and only the ticket holder has it, so they see their own number in full.
-      return send(res, 200, { ticket: t, position: Q.position(state, t) });
+      return send(res, 200, { ticket: Q.customerTicket(t), position: Q.position(state, t) });
     }
 
     // Customer may cancel their own ticket (they hold the unguessable id)
@@ -164,7 +164,7 @@ const server = http.createServer(async (req, res) => {
       const t = Q.act(state, m[1], 'cancel');
       save();
       N.notifyNext(state, before).then((changed) => changed && save());
-      return send(res, 200, { ticket: t });
+      return send(res, 200, { ticket: Q.customerTicket(t) });
     }
 
     // ---- staff-only ----
@@ -175,6 +175,7 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/staff/tickets' && req.method === 'GET') {
       requireStaff(req);
+      if (await N.refreshCallSms(state)) save();
       return send(res, 200, { ...Q.publicState(state), tickets: state.tickets });
     }
 
@@ -208,7 +209,7 @@ const server = http.createServer(async (req, res) => {
       const before = N.firstWaitingIds(state);
       const t = Q.callNext(state, m[1]);
       save();
-      N.yourTurn(t);
+      N.yourTurn(t).then(() => save());
       N.notifyNext(state, before).then((changed) => changed && save());
       return send(res, 200, { ticket: t });
     }
@@ -219,7 +220,7 @@ const server = http.createServer(async (req, res) => {
       const before = N.firstWaitingIds(state);
       const t = Q.act(state, m[1], m[2]);
       save();
-      if (m[2] === 'call') N.yourTurn(t);
+      if (m[2] === 'call') N.yourTurn(t).then(() => save());
       N.notifyNext(state, before).then((changed) => changed && save());
       return send(res, 200, { ticket: t });
     }

@@ -265,3 +265,36 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 2p
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+.pill.sms-sent { color: var(--accent-ink); border-color: #426a74; }
+.pill.sms-delivered { color: #43824c; border-color: #43824c; }
+.pill.sms-failed { color: var(--danger); border-color: #986060; }
+
+/* Compact queue: full width leaves room for customer identity and status actions. */
+.staff .cols { grid-template-columns: minmax(0, 1fr); }
+.queue-search { max-width: 480px; margin-bottom: 20px; }
+.queue-search input { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #aab4be; background: #fff; color: var(--ink); }
+.staff .list li { display: block; padding: 9px 0; }
+.ticket-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; min-height: 36px; font-size: 13px; }
+.staff .list .n { min-width: 0; font-size: 15px; font-weight: 700; }
+.queue-position { color: var(--ink-2); font-size: 12px; min-width: 20px; font-variant-numeric: tabular-nums; }
+.ticket-name { font-weight: 600; overflow-wrap: anywhere; flex: 1 1 120px; }
+.ticket-phone { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ticket-time { font-size: 12px; color: var(--ink-2); }
+.ticket-line > .pill { padding: 3px 6px; font-size: 9px; letter-spacing: .03em; }
+.staff .list .acts { width: auto; gap: 4px; }
+.staff .list .acts .btn { min-height: 36px; padding: 6px 8px; font-size: 10px; letter-spacing: .02em; flex: none; }
+.details-toggle, .recent-toggle, .section-label button { border: 0; background: transparent; color: var(--accent-ink); cursor: pointer; font: inherit; min-height: 36px; padding: 6px 8px; }
+.details-toggle, .recent-toggle { font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.staff .section-label { margin: 16px 0 0; font-weight: 500; }
+.section-label button { display: block; width: 100%; text-align: left; letter-spacing: .1em; text-transform: uppercase; }
+.section-label button:hover, .details-toggle:hover, .recent-toggle:hover { background: var(--accent-soft); }
+.ticket-details { padding: 8px 0 2px; font-size: 12px; color: var(--ink-2); line-height: 1.7; overflow-wrap: anywhere; }
+.ticket-details .link-inline { min-height: 36px; }
+.ticket-details .pill { padding: 2px 6px; font-size: 9px; }
+.staff button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 640px) {
+  .ticket-line { gap: 6px 10px; }
+  .ticket-name { flex-basis: calc(100% - 130px); }
+  .staff .list .acts { flex-wrap: wrap; }
+}
