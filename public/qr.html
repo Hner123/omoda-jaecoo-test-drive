@@ -7,9 +7,9 @@
   <link rel="stylesheet" href="/style.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
-    .poster { --ink: #111; --ink-2: #555; --ink-3: #666; color-scheme: light; max-width: 560px; margin: 0 auto; background: #fff; color: #111; border: 1px solid #ccc; padding: 40px; text-align: center; }
+    .poster { --ink: #111; --ink-2: #555; --ink-3: #666; color-scheme: light; max-width: 680px; margin: 0 auto; background: #fff; color: #111; border: 1px solid #ccc; padding: 40px; text-align: center; }
     .poster .sub { padding: 16px 0; border-top: 1px solid #bbb; border-bottom: 1px solid #bbb; font-size: 11px; letter-spacing: .24em; text-transform: uppercase; color: #555; margin-top: 24px; }
-    .poster h1 { font-size: 30px; margin: 32px 0 16px; font-weight: 400; letter-spacing: .08em; }
+    .poster h1 { font-size: 30px; margin: 32px 0 16px; font-weight: 700; letter-spacing: .08em; }
     .poster .lead { margin: 0 auto 28px; font-size: 15px; }
     #qr { display: inline-block; max-width: 100%; padding: 18px; border: 1px solid #111; background: #fff; }
     #qr img, #qr canvas { display: block; max-width: 100%; height: auto; }
@@ -20,30 +20,33 @@
     .steps div + div { border-left: 1px solid #ccc; padding-left: 16px; }
     .cars { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 30px; padding-top: 24px; border-top: 1px solid #bbb; }
     .cars img { width: 100%; }
-    .poster > .logo { width: 100%; max-width: 340px; }
+    .poster > .logo { display: block; margin: 0 auto; width: 100%; max-width: 520px; height: auto; aspect-ratio: 882 / 49; }
     .controls { display: flex; gap: 12px; justify-content: center; margin: 0 0 32px; flex-wrap: wrap; }
     @media (max-width: 640px) {
       .poster { padding: 28px 16px; }
       #qr { padding: 10px; }
       .poster h1 { font-size: 26px; }
-      .steps { gap: 10px; }
+      .steps { gap: 10px; overflow-wrap: anywhere; }
       .steps div + div { padding-left: 10px; }
     }
     @media print {
-      @page { size: A4; margin: 12mm; }
+      @page { size: A4; margin: 10mm; }
       body { background: #fff; }
       .topbar, .controls { display: none !important; }
       .wrap { padding: 0; }
-      .poster { border: 0; max-width: none; padding: 10mm; break-inside: avoid; }
+      .poster { border: 0; max-width: none; padding: 4mm; break-inside: avoid; }
+      .poster > .logo { max-width: 150mm; }
       .poster h1 { font-size: 30pt; }
       .poster .sub { margin-top: 4mm; padding: 3mm 0; }
       .poster h1 { margin: 6mm 0 3mm; }
       .poster .lead { margin-bottom: 5mm; font-size: 11pt; }
-      #qr img, #qr canvas { width: 70mm !important; height: 70mm !important; }
+      #qr { padding: 3mm; }
+      #qr img, #qr canvas { width: 100mm !important; height: 100mm !important; }
+      .url { margin-top: 3mm; }
       .steps { margin-top: 5mm; padding-top: 4mm; }
       .steps b { font-size: 20pt; margin-bottom: 1mm; }
-      .cars { margin-top: 6mm; padding-top: 4mm; }
-      .cars img { max-width: 40mm; margin: auto; }
+      .cars { gap: 2mm; margin-top: 4mm; padding-top: 3mm; }
+      .cars img { max-width: 32mm; margin: auto; }
     }
   </style>
 </head>
@@ -79,7 +82,7 @@
     // The code points at this site's own registration page, so it's correct wherever the app is hosted.
     const url = location.origin + '/';
     document.getElementById('url').textContent = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
-    new QRCode(document.getElementById('qr'), { text: url, width: 260, height: 260, correctLevel: QRCode.CorrectLevel.M });
+    new QRCode(document.getElementById('qr'), { text: url, width: 380, height: 380, correctLevel: QRCode.CorrectLevel.M });
     // expose the rendered image for download once the library has drawn it
     setTimeout(() => {
       const img = document.querySelector('#qr img');
