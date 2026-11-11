@@ -39,13 +39,16 @@ test('createTicket rejects invalid raw phones before sanitization and leaves sta
   }
 });
 
-test('valid phones retain storage and duplicate behavior, match guests and send as +63', () => {
+test('valid phones retain storage, allow repeat registrations, match guests and send as +63', () => {
   const guest = { phone: '9171234567', dealer: 'OJ Makati' };
   for (const phone of valid) {
     const state = Q.emptyState();
     const ticket = Q.createTicket(state, { ...registration, phone });
     assert.equal(ticket.phone, phone.replace(/[^\d+]/g, '').slice(0, 16));
-    assert.throws(() => Q.createTicket(state, { ...registration, phone }), { status: 409 });
+    const secondTicket = Q.createTicket(state, { ...registration, phone });
+    assert.notEqual(secondTicket.number, ticket.number);
+    assert.equal(secondTicket.phone, ticket.phone);
+    assert.equal(state.tickets.length, 2);
     assert.equal(findGuest({ guests: [guest] }, { phone: ticket.phone }), guest);
     assert.equal(toE164(ticket.phone), '+639171234567');
   }
