@@ -7,6 +7,7 @@ const Q = require('../../lib/queue.js');
 const N = require('../../lib/notify.js');
 const { extractLicense } = require('../../lib/license.js');
 const G = require('../../lib/guests.js');
+const { createAnnouncer } = require('../../lib/announce.js');
 
 export const config = { path: '/api/*' };
 
@@ -18,10 +19,17 @@ function store() {
   return getStore({ name: 'queue', consistency: 'strong' });
 }
 
-// License photos live in their own store, keyed by ticket id; only the staff endpoint reads them.
+// Front/back photos and signatures live in their own store; only the staff endpoint reads them.
 function photoStore() {
   return getStore({ name: 'licenses' });
 }
+
+const announce = createAnnouncer({
+  cache: {
+    get: (key) => getStore({ name: 'announcements', consistency: 'strong' }).get(key, { type: 'arrayBuffer' }),
+    set: (key, bytes) => getStore({ name: 'announcements', consistency: 'strong' }).set(key, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), { metadata: { contentType: 'audio/mpeg' } }),
+  },
+});
 
 async function load() {
   const s = await store().get(Q.today(), { type: 'json' });
@@ -62,6 +70,13 @@ export default async (req) => {
   try {
     if (pathname === '/api/state' && method === 'GET') return json(200, Q.publicState(await load()));
 
+    if (pathname === '/api/announce' && method === 'GET') {
+      const result = await announce(load, new URL(req.url).searchParams.get('number'));
+      return result.status === 200
+        ? new Response(result.body, { status: 200, headers: result.headers })
+        : json(result.status, result.body);
+    }
+
     // Lets the form show the invitation as they type; answers with the dealer name only.
     if (pathname === '/api/guest-lookup' && method === 'POST') {
       const guest = G.findGuest(await loadGuests(), await readBody(req));
@@ -73,10 +88,13 @@ export default async (req) => {
 
     if (pathname === '/api/tickets' && method === 'POST') {
       const body = await readBody(req);
-      const photo = Q.decodePhoto(body.licensePhoto);
+      const images = Q.registrationImages(body);
       const state = await load();
-      const t = Q.createTicket(state, { ...G.applyGuest(body, await loadGuests()), hasLicensePhoto: !!photo });
-      if (photo) await photoStore().set(t.id, new Blob([photo.bytes], { type: photo.type }), { metadata: { type: photo.type, number: t.number, date: state.date } });
+      const t = Q.createTicket(state, { ...G.applyGuest(body, await loadGuests()), hasLicensePhoto: true, hasLicensePhotoBack: true, hasSignature: true });
+      for (const [side, image] of Object.entries(images)) {
+        const suffix = side === 'front' ? '' : `-${side}`;
+        await photoStore().set(`${t.id}${suffix}`, new Blob([image.bytes], { type: image.type }), { metadata: { type: image.type, number: t.number, date: state.date } });
+      }
       await save(state);
       const position = Q.position(state, t);
       await N.welcome(state, t, position);
@@ -131,7 +149,8 @@ export default async (req) => {
     m = pathname.match(/^\/api\/staff\/license\/(\w+)$/);
     if (m && method === 'GET') {
       requireStaff(req);
-      const r = await photoStore().getWithMetadata(m[1], { type: 'arrayBuffer' });
+      const suffix = Q.licenseSide(new URL(req.url).searchParams.get('side'));
+      const r = await photoStore().getWithMetadata(`${m[1]}${suffix}`, { type: 'arrayBuffer' });
       if (!r || !r.data) throw Q.httpError(404, 'No license photo for this ticket');
       return new Response(r.data, { status: 200, headers: { 'Content-Type': (r.metadata && r.metadata.type) || 'image/jpeg', 'Cache-Control': 'private, no-store' } });
     }

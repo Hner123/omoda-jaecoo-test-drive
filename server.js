@@ -1,4 +1,4 @@
-// XPeng Test Drive Queue — local/showroom Node server (zero dependencies).
+// OMODA & JAECOO Test Drive Queue — local/showroom Node server (zero dependencies).
 // Run: node server.js   (PORT and STAFF_PIN can be set via env)
 // The same routes are served on Netlify by netlify/functions/api.mjs; queue rules live in lib/queue.js.
 const http = require('http');
@@ -8,12 +8,13 @@ const Q = require('./lib/queue');
 const N = require('./lib/notify');
 const { extractLicense } = require('./lib/license');
 const G = require('./lib/guests');
+const announce = require('./lib/announce').createAnnouncer();
 
 const PORT = Number(process.env.PORT) || 3000;
 const STAFF_PIN = process.env.STAFF_PIN || '1234';
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'queue.json');
-const LICENSE_DIR = path.join(DATA_DIR, 'licenses'); // license photos, one file per ticket id
+const LICENSE_DIR = path.join(DATA_DIR, 'licenses'); // front, back and signature files per ticket
 const GUESTS_FILE = path.join(DATA_DIR, 'guests.json'); // dealer guest list, kept across days
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
@@ -76,7 +77,7 @@ function readBody(req) {
     let data = '';
     req.on('data', (c) => {
       data += c;
-      if (data.length > 6e6) req.destroy(); // license photos are ~0.3 MB after client-side downsizing
+      if (data.length > 6e6) req.destroy(); // two client-downsized photos + PNG signature fit well below this
     });
     req.on('end', () => {
       try {
@@ -92,7 +93,7 @@ function requireStaff(req) {
   if (req.headers['x-staff-pin'] !== STAFF_PIN) throw Q.httpError(401, 'Invalid staff PIN');
 }
 
-const MIME = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
+const MIME = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
 
 function serveStatic(req, res, pathname) {
   if (pathname === '/') pathname = '/index.html';
@@ -105,7 +106,7 @@ function serveStatic(req, res, pathname) {
     res.writeHead(200, {
       'Content-Type': (MIME[ext] || 'application/octet-stream') + '; charset=utf-8',
       // pages and scripts must always be revalidated so edits show up on the next load; images can be cached
-      'Cache-Control': ext === '.png' ? 'public, max-age=86400' : 'no-cache',
+      'Cache-Control': ['.png', '.jpg', '.jpeg', '.webp', '.svg'].includes(ext) ? 'public, max-age=86400' : 'no-cache',
     });
     res.end(buf);
   });
@@ -119,6 +120,13 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/state' && req.method === 'GET') return send(res, 200, Q.publicState(state));
 
+    if (pathname === '/api/announce' && req.method === 'GET') {
+      const result = await announce(state, new URL(req.url, 'http://localhost').searchParams.get('number'));
+      if (result.status !== 200) return send(res, result.status, result.body);
+      res.writeHead(200, result.headers);
+      return res.end(result.body);
+    }
+
     if (pathname === '/api/guest-lookup' && req.method === 'POST') {
       const guest = G.findGuest(loadGuests(), await readBody(req));
       return send(res, 200, guest ? { match: true, dealer: guest.dealer } : { match: false });
@@ -128,11 +136,12 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/tickets' && req.method === 'POST') {
       const body = await readBody(req);
-      const photo = Q.decodePhoto(body.licensePhoto);
-      const t = Q.createTicket(state, { ...G.applyGuest(body, loadGuests()), hasLicensePhoto: !!photo });
-      if (photo) {
-        fs.mkdirSync(LICENSE_DIR, { recursive: true });
-        fs.writeFileSync(path.join(LICENSE_DIR, `${t.id}.${photo.type.split('/')[1]}`), photo.bytes);
+      const images = Q.registrationImages(body);
+      const t = Q.createTicket(state, { ...G.applyGuest(body, loadGuests()), hasLicensePhoto: true, hasLicensePhotoBack: true, hasSignature: true });
+      fs.mkdirSync(LICENSE_DIR, { recursive: true });
+      for (const [side, image] of Object.entries(images)) {
+        const suffix = side === 'front' ? '' : `-${side}`;
+        fs.writeFileSync(path.join(LICENSE_DIR, `${t.id}${suffix}.${image.type.split('/')[1]}`), image.bytes);
       }
       save();
       const position = Q.position(state, t);
@@ -186,7 +195,8 @@ const server = http.createServer(async (req, res) => {
     m = pathname.match(/^\/api\/staff\/license\/(\w+)$/);
     if (m && req.method === 'GET') {
       requireStaff(req);
-      const file = ['jpeg', 'png', 'webp'].map((e) => path.join(LICENSE_DIR, `${m[1]}.${e}`)).find((f) => fs.existsSync(f));
+      const suffix = Q.licenseSide(new URL(req.url, 'http://localhost').searchParams.get('side'));
+      const file = ['jpeg', 'png', 'webp'].map((e) => path.join(LICENSE_DIR, `${m[1]}${suffix}.${e}`)).find((f) => fs.existsSync(f));
       if (!file) throw Q.httpError(404, 'No license photo for this ticket');
       res.writeHead(200, { 'Content-Type': `image/${path.extname(file).slice(1)}`, 'Cache-Control': 'private, no-store' });
       return res.end(fs.readFileSync(file));
@@ -246,7 +256,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`XPeng Test Drive Queue running:`);
+  console.log(`OMODA & JAECOO Test Drive Queue running:`);
   console.log(`  Customer kiosk : http://localhost:${PORT}/`);
   console.log(`  Staff console  : http://localhost:${PORT}/staff   (PIN: ${STAFF_PIN === '1234' ? '1234 — set STAFF_PIN to change' : 'set via STAFF_PIN'})`);
   console.log(`  Lobby display  : http://localhost:${PORT}/display`);

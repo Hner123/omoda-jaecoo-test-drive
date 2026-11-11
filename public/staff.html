@@ -3,14 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>XPENG Queue — Staff</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <title>OMODA & JAECOO Queue — Staff</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
-<body>
+<body class="staff">
   <header class="topbar">
-    <a class="brand" href="/staff"><span class="logo" aria-hidden="true"></span>XPENG <small>Staff Console</small></a>
+    <a class="brand" href="/staff"><span class="logo" role="img" aria-label="OMODA &amp; JAECOO"></span> <small>Staff Console</small></a>
     <nav><a href="/">Kiosk</a><a href="/staff" class="active">Staff</a><a href="/display" target="_blank">Lobby display</a><a href="/qr" target="_blank">QR poster</a><a href="#" id="logout" hidden>Sign out</a></nav>
   </header>
 
@@ -38,11 +36,12 @@
       <div class="guest-head">
         <div>
           <h2 style="margin:0 0 4px">Daily report</h2>
-          <div class="muted" style="font-size:14px">Excel file with every registration and its test drive status, plus a summary sheet.</div>
+          <div class="muted" style="font-size:14px">Download registrations as CSV, or Excel with a summary sheet.</div>
         </div>
         <div class="guest-actions">
           <select id="report-day" aria-label="Report day"></select>
           <button type="button" class="btn sm" id="report-download">Download Excel</button>
+          <button type="button" class="btn ghost sm" id="report-csv">Download CSV</button>
         </div>
       </div>
       <div class="guest-result" id="report-result" hidden></div>
@@ -55,7 +54,7 @@
         </div>
         <div class="guest-actions">
           <button type="button" class="btn ghost sm" id="guest-template">Download template</button>
-          <label class="btn sm" for="guest-file" id="guest-upload">Upload list</label>
+          <button type="button" class="btn sm" id="guest-upload">Upload list</button>
           <input type="file" id="guest-file" accept=".csv,.xlsx,.xls" hidden />
           <button type="button" class="btn danger sm" id="guest-clear" hidden>Clear list</button>
         </div>
@@ -72,6 +71,7 @@
   <script>
     let pin = sessionStorage.getItem('xpq-pin');
     let state = null;
+    $('#guest-upload').onclick = () => $('#guest-file').click();
 
     async function login(p) {
       await api('/api/staff/login', { method: 'POST', pin: p });
@@ -104,19 +104,26 @@
       }
     }
 
+    const genderLabel = (gender) => gender === 'male' ? 'Male' : gender === 'female' ? 'Female' : '';
+
     function row(t, actions) {
       const time = t.status === 'waiting' ? `joined ${ago(t.createdAt)}` :
         t.status === 'called' ? `called ${ago(t.calledAt)}` :
         t.status === 'driving' ? `driving since ${ago(t.startedAt)}` : (STATUS_LABEL[t.status] + ' · ' + ago(t.finishedAt || t.createdAt));
-      const lic = t.licenseNumber
-        ? `<div>Lic. ${esc(t.licenseNumber)} · exp ${esc(cardDate(t.licenseExpiry))}${t.licenseExpiry && t.licenseExpiry < state.date ? ' <span class="pill expired">Expired</span>' : ''}${t.hasLicensePhoto ? ` · <button type="button" class="link-inline" data-photo="${t.id}">View license</button>` : ''}</div>`
-        : '<div class="muted">No license on file</div>';
+      const licenseDetails = [
+        t.licenseNumber && `Lic. ${esc(t.licenseNumber)}`,
+        t.licenseExpiry && `exp ${esc(cardDate(t.licenseExpiry))}${t.licenseExpiry < state.date ? ' <span class="pill expired">Expired</span>' : ''}`,
+        (t.hasLicensePhoto || t.hasLicensePhotoBack || t.hasSignature) && `<button type="button" class="link-inline" data-photo="${t.id}">View license</button>`,
+      ].filter(Boolean);
+      const lic = licenseDetails.length ? `<div>${licenseDetails.join(' · ')}</div>` : '';
       return `<li>
         <div class="n">${t.number}</div>
+        <div class="ticket-body">
         <div class="who"><div>${esc(t.name)}</div><div>${esc(t.phone)} · ${time}</div>${
-          t.email ? `<div>${esc(t.email)} · ${esc(t.municipality)}</div><div>${esc((state.customerTypes || {})[t.customerType] || t.customerType || '')}${t.dealer ? ' — ' + esc(t.dealer) : ''}${t.guestMatched ? ' <span class="pill driving">On guest list</span>' : ''}</div>` : ''
-        }${lic}</div>
+          t.email ? `<div>${esc(t.email)} · ${esc(t.municipality)}</div><div>${esc((state.customerTypes || {})[t.customerType] || t.customerType || '')}${t.guestMatched ? ' <span class="pill driving">On guest list</span>' : ''}</div>` : ''
+        }<div>Gender: ${esc(genderLabel(t.gender))}</div><div>Location/Dealer: ${esc(t.dealer || '')}</div><div>Assigned Sales Executive: ${esc(t.salesExecutive || '')}</div><div>Test drive resource: ${esc((state.testDriveResources || {})[t.testDriveResource] || t.testDriveResource || '')}</div>${lic}</div>
         <div class="acts">${actions.map(([a, label, cls]) => `<button class="btn sm ${cls || 'ghost'}" data-id="${t.id}" data-act="${a}">${label}</button>`).join('')}</div>
+        </div>
       </li>`;
     }
 
@@ -138,7 +145,7 @@
         const recent = pick('done', 'noshow', 'cancelled').sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0)).slice(0, 5);
         return `<section class="panel">
           <div class="col-head">
-            <img src="${m.image}" alt="" />
+            <img src="${m.image}" alt="${esc(m.name)}" />
             <div><div class="name">${esc(m.name)}</div><div class="sub">${m.waitingCount} waiting · ~${m.estWaitMin} min</div></div>
             <button class="btn accent" data-next="${m.id}" ${waiting.length ? '' : 'disabled'}>Call next</button>
           </div>
@@ -239,22 +246,32 @@
     const minutesBetween = (a, b) => (a && b ? Math.round((b - a) / 60000) : '');
     const average = (xs) => (xs.length ? Math.round(xs.reduce((s, x) => s + x, 0) / xs.length) : '');
 
-    function buildReportWorkbook(data) {
+    function reportRows(data) {
       const isToday = data.date === data.today;
-      const rows = data.tickets.map((t) => {
+      return data.tickets.map((t) => {
         const [status, remarks] = driveStatus(t, isToday);
         return { t, status, remarks };
       });
-
-      const list = [
-        ['Queue No.', 'Preferred Model', 'Complete Name', 'Mobile Number', 'E-mail Address', 'Municipality', 'Customer Type', 'Inviting Dealer', 'On Dealer Guest List',
-          'License No.', 'License Expiry', 'Test Drive Status', 'Remarks', 'Registered', 'Called', 'Drive Started', 'Finished', 'Wait (min)', 'Drive (min)'],
-        ...rows.map(({ t, status, remarks }) => [
-          t.number, t.model, t.name, t.phone, t.email || '', t.municipality || '', data.customerTypes[t.customerType] || '', t.dealer || '', t.guestMatched ? 'Yes' : 'No',
-          t.licenseNumber || '', cardDate(t.licenseExpiry), status, remarks, manilaTime(t.createdAt), manilaTime(t.calledAt), manilaTime(t.startedAt),
+    }
+    function registrationRows(data) {
+      return [
+        ['Date', 'Queue No.', 'Preferred Model', 'Complete Name', 'Gender', 'Mobile Number', 'E-mail Address', 'Municipality', 'Customer Type', 'Location/Dealer',
+          'Assigned Sales Executive', 'Test Drive Resource', 'On Dealer Guest List', 'License No.', 'License Expiry', 'Data Privacy Consent', 'Signature on file', 'License Back Photo',
+          'Test Drive Status', 'Remarks', 'Registered', 'Called', 'Drive Started', 'Finished', 'Wait (min)', 'Drive (min)'],
+        ...reportRows(data).map(({ t, status, remarks }) => [
+          new Date(t.createdAt).toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' }), t.number, (data.models.find((m) => m.id === t.model) || {}).name || t.model,
+          t.name, genderLabel(t.gender), t.phone, t.email || '', t.municipality || '', (data.customerTypes || {})[t.customerType] || t.customerType || '', t.dealer || '',
+          t.salesExecutive || '', (data.testDriveResources || {})[t.testDriveResource] || t.testDriveResource || '', t.guestMatched ? 'Yes' : 'No',
+          t.licenseNumber || '', cardDate(t.licenseExpiry), t.consentAt ? 'Yes' : 'No', t.hasSignature ? 'Yes' : 'No', t.hasLicensePhotoBack ? 'Yes' : 'No',
+          status, remarks, manilaTime(t.createdAt), manilaTime(t.calledAt), manilaTime(t.startedAt),
           t.status === 'done' || t.status === 'noshow' || t.status === 'cancelled' ? manilaTime(t.finishedAt) : '', minutesBetween(t.createdAt, t.calledAt), minutesBetween(t.startedAt, t.finishedAt),
         ]),
       ];
+    }
+    function buildReportWorkbook(data) {
+      const isToday = data.date === data.today;
+      const rows = reportRows(data);
+      const list = registrationRows(data);
 
       const count = (subset, s) => subset.filter((r) => r.status === s).length;
       const statusCols = isToday ? ['Completed', 'No-show', 'Cancelled', 'On test drive', 'Called', 'Waiting'] : ['Completed', 'No-show', 'Cancelled'];
@@ -269,7 +286,7 @@
         return keys.length ? [[], [title], header, ...keys.map((k) => line(labelOf(k), rows.filter((r) => keyOf(r.t) === k)))] : [];
       };
       const summary = [
-        ['XPENG Test Drive — Daily Report'],
+        ['OMODA & JAECOO Test Drive — Daily Report'],
         ['Date', cardDate(data.date) + (isToday ? ' (today, still in progress)' : '')],
         ['Generated', new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' })],
         [],
@@ -277,12 +294,13 @@
         line('All models', rows),
         ...data.models.map((m) => line(m.name, rows.filter((r) => r.t.model === m.id))),
         ...group('By customer type', (t) => t.customerType, (k) => data.customerTypes[k] || k),
-        ...group('By inviting dealer', (t) => t.dealer, (k) => k),
+        ...group('By location/dealer', (t) => t.dealer, (k) => k),
+        ...group('By test drive resource', (t) => t.testDriveResource, (k) => (data.testDriveResources || {})[k] || k),
       ];
 
       const book = XLSX.utils.book_new();
       const listSheet = XLSX.utils.aoa_to_sheet(list);
-      listSheet['!cols'] = [8, 10, 24, 15, 26, 18, 30, 22, 12, 16, 12, 16, 30, 10, 10, 12, 10, 9, 9].map((wch) => ({ wch }));
+      listSheet['!cols'] = [12, 12, 22, 24, 10, 16, 26, 18, 30, 22, 26, 22, 18, 18, 14, 20, 18, 20, 18, 30, 12, 12, 14, 12, 12, 12].map((wch) => ({ wch }));
       listSheet['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: list.length - 1, c: list[0].length - 1 } }) };
       const summarySheet = XLSX.utils.aoa_to_sheet(summary);
       summarySheet['!cols'] = [{ wch: 38 }, ...header.slice(1).map(() => ({ wch: 14 }))];
@@ -307,7 +325,7 @@
       $('#report-result').hidden = true;
       try {
         const [data] = await Promise.all([api('/api/staff/report/' + day, { pin }), loadXlsxLibrary()]);
-        XLSX.writeFile(buildReportWorkbook(data), `xpeng-test-drive-${day}.xlsx`);
+        XLSX.writeFile(buildReportWorkbook(data), `omoda-jaecoo-test-drive-${day}.xlsx`);
         $('#report-result').hidden = false;
         $('#report-result').classList.remove('error-text');
         $('#report-result').textContent = data.tickets.length
@@ -322,20 +340,56 @@
       }
     };
 
-    // License photo viewer: fetched with the staff PIN, shown in a modal, never linked directly.
+    // CSV uses the same registration columns and labels as the Excel workbook.
+    function registrationCsv(data) {
+      const cell = (value) => {
+        let text = String(value ?? '');
+        if (/^[=+@-]/.test(text)) text = "'" + text;
+        return '"' + text.replace(/"/g, '""') + '"';
+      };
+      return '\uFEFF' + registrationRows(data).map((row) => row.map(cell).join(',')).join('\r\n');
+    }
+    $('#report-csv').onclick = async () => {
+      const day = $('#report-day').value;
+      if (!day) return;
+      const btn = $('#report-csv');
+      btn.disabled = true;
+      try {
+        const data = await api('/api/staff/report/' + day, { pin });
+        const url = URL.createObjectURL(new Blob([registrationCsv(data)], { type: 'text/csv;charset=utf-8' }));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `omoda-jaecoo-test-drive-${day}.csv`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        toast(`Downloaded ${data.tickets.length} registrations as CSV`);
+      } catch (err) { toast(err.message); }
+      finally { btn.disabled = false; }
+    };
+
+    // All three documents are fetched with the staff PIN, never linked directly.
     async function viewLicense(id, number) {
-      const res = await fetch('/api/staff/license/' + id, { headers: { 'x-staff-pin': pin } });
-      if (!res.ok) return toast('No license photo on file');
-      const url = URL.createObjectURL(await res.blob());
+      const documents = [];
+      try {
+        for (const [side, label] of [['front', 'License front'], ['back', 'License back'], ['signature', 'Signature']]) {
+          const res = await fetch('/api/staff/license/' + id + '?side=' + side, { headers: { 'x-staff-pin': pin } });
+          if (res.status === 404) { documents.push({ label }); continue; }
+          if (!res.ok) throw new Error('Could not open registration documents');
+          documents.push({ label, url: URL.createObjectURL(await res.blob()) });
+        }
+      } catch (err) {
+        documents.forEach((doc) => doc.url && URL.revokeObjectURL(doc.url));
+        return toast(err.message);
+      }
       const wrap = document.createElement('div');
       wrap.className = 'modal-backdrop';
-      wrap.innerHTML = `<div class="modal modal-wide" role="dialog" aria-modal="true"><h2>License — ${esc(number)}</h2><img src="${url}" alt="Driver's license" style="width:100%;border-radius:10px;border:1px solid var(--line)" /><div class="modal-actions"><button type="button" class="btn ghost" data-close>Close</button></div></div>`;
-      const close = () => { wrap.classList.remove('open'); setTimeout(() => { wrap.remove(); URL.revokeObjectURL(url); }, 180); document.removeEventListener('keydown', onKey); };
+      wrap.innerHTML = `<div class="modal modal-wide" role="dialog" aria-modal="true" aria-label="Registration documents"><h2>License ? ${esc(number)}</h2><div class="modal-body license-documents">${documents.map((doc) => `<h3>${esc(doc.label)}</h3>${doc.url ? `<img src="${doc.url}" alt="${esc(doc.label)}" />` : '<p>No document on file</p>'}`).join('')}</div><div class="modal-actions"><button type="button" class="btn ghost" data-close>Close</button></div></div>`;
+      const close = () => { wrap.classList.remove('open'); setTimeout(() => { wrap.remove(); documents.forEach((doc) => doc.url && URL.revokeObjectURL(doc.url)); }, 180); document.removeEventListener('keydown', onKey); };
       const onKey = (ev) => ev.key === 'Escape' && close();
       wrap.addEventListener('click', (ev) => (ev.target === wrap || ev.target.closest('[data-close]')) && close());
       document.addEventListener('keydown', onKey);
       document.body.append(wrap);
-      requestAnimationFrame(() => wrap.classList.add('open'));
+      requestAnimationFrame(() => { wrap.classList.add('open'); wrap.querySelector('[data-close]').focus(); });
     }
 
     $('#cols').addEventListener('click', async (e) => {

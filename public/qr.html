@@ -3,66 +3,75 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>XPENG Queue — QR Poster</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <title>OMODA & JAECOO Queue — QR Poster</title>
   <link rel="stylesheet" href="/style.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <style>
-    .poster {
-      max-width: 520px; margin: 0 auto; background: #fff; border: 1px solid var(--line); border-radius: 20px;
-      padding: 48px 40px; text-align: center; box-shadow: var(--shadow);
+    .poster { --ink: #111; --ink-2: #555; --ink-3: #666; color-scheme: light; max-width: 560px; margin: 0 auto; background: #fff; color: #111; border: 1px solid #ccc; padding: 40px; text-align: center; }
+    .poster .sub { padding: 16px 0; border-top: 1px solid #bbb; border-bottom: 1px solid #bbb; font-size: 11px; letter-spacing: .24em; text-transform: uppercase; color: #555; margin-top: 24px; }
+    .poster h1 { font-size: 30px; margin: 32px 0 16px; font-weight: 400; letter-spacing: .08em; }
+    .poster .lead { margin: 0 auto 28px; font-size: 15px; }
+    #qr { display: inline-block; max-width: 100%; padding: 18px; border: 1px solid #111; background: #fff; }
+    #qr img, #qr canvas { display: block; max-width: 100%; height: auto; }
+    .url { margin-top: 20px; font-size: 14px; color: #555; overflow-wrap: anywhere; }
+    .steps { display: flex; justify-content: center; gap: 20px; margin-top: 28px; padding-top: 24px; border-top: 1px solid #bbb; text-align: left; }
+    .steps div { flex: 1; min-width: 0; font-size: 12px; color: #555; line-height: 1.6; }
+    .steps b { display: block; font-size: 26px; font-weight: 300; color: var(--accent); margin-bottom: 8px; }
+    .steps div + div { border-left: 1px solid #ccc; padding-left: 16px; }
+    .cars { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 30px; padding-top: 24px; border-top: 1px solid #bbb; }
+    .cars img { width: 100%; }
+    .poster > .logo { width: 100%; max-width: 340px; }
+    .controls { display: flex; gap: 12px; justify-content: center; margin: 0 0 32px; flex-wrap: wrap; }
+    @media (max-width: 640px) {
+      .poster { padding: 28px 16px; }
+      #qr { padding: 10px; }
+      .poster h1 { font-size: 26px; }
+      .steps { gap: 10px; }
+      .steps div + div { padding-left: 10px; }
     }
-    .poster .brand-big { font-size: 34px; font-weight: 700; letter-spacing: 0.22em; }
-    .poster .sub { font-size: 14px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-3); margin-top: 6px; }
-    .poster h1 { font-size: 30px; margin: 28px 0 6px; }
-    .poster .lead { margin: 0 auto 28px; font-size: 16px; }
-    #qr { display: inline-block; padding: 18px; border: 2px solid var(--ink); border-radius: 16px; background: #fff; }
-    #qr img, #qr canvas { display: block; }
-    .url { margin-top: 18px; font-size: 15px; color: var(--ink-2); word-break: break-all; }
-    .steps { display: flex; justify-content: center; gap: 24px; margin-top: 28px; text-align: left; }
-    .steps div { flex: 1; max-width: 140px; font-size: 13px; color: var(--ink-2); line-height: 1.45; }
-    .steps b { display: block; font-size: 22px; color: var(--accent-ink); margin-bottom: 4px; }
-    .cars { display: flex; justify-content: center; gap: 24px; margin-top: 30px; }
-    .cars img { width: 150px; }
-    .controls { display: flex; gap: 10px; justify-content: center; margin: 28px 0; flex-wrap: wrap; }
     @media print {
-      @page { margin: 12mm; }
+      @page { size: A4; margin: 12mm; }
       body { background: #fff; }
       .topbar, .controls { display: none !important; }
       .wrap { padding: 0; }
-      .poster { border: 0; box-shadow: none; max-width: none; padding: 20mm 10mm; }
-      .poster h1 { font-size: 34pt; }
-      #qr img, #qr canvas { width: 90mm !important; height: 90mm !important; }
+      .poster { border: 0; max-width: none; padding: 10mm; break-inside: avoid; }
+      .poster h1 { font-size: 30pt; }
+      .poster .sub { margin-top: 4mm; padding: 3mm 0; }
+      .poster h1 { margin: 6mm 0 3mm; }
+      .poster .lead { margin-bottom: 5mm; font-size: 11pt; }
+      #qr img, #qr canvas { width: 70mm !important; height: 70mm !important; }
+      .steps { margin-top: 5mm; padding-top: 4mm; }
+      .steps b { font-size: 20pt; margin-bottom: 1mm; }
+      .cars { margin-top: 6mm; padding-top: 4mm; }
+      .cars img { max-width: 40mm; margin: auto; }
     }
   </style>
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/"><span class="logo" aria-hidden="true"></span>XPENG <small>Queue QR Poster</small></a>
+    <a class="brand" href="/"><span class="logo" role="img" aria-label="OMODA &amp; JAECOO"></span> <small>Queue QR Poster</small></a>
     <nav><a href="/">Kiosk</a><a href="/staff">Staff</a><a href="/display">Lobby display</a></nav>
   </header>
 
   <main class="wrap">
     <div class="controls">
       <button class="btn" onclick="window.print()">Print poster</button>
-      <a class="btn ghost" id="download" download="xpeng-queue-qr.png">Download QR image</a>
+      <a class="btn ghost" id="download" download="omoda-jaecoo-queue-qr.png">Download QR image</a>
     </div>
 
     <section class="poster">
-      <span class="logo" style="width:72px;height:38px;display:block;margin:0 auto 10px"></span>
-      <div class="brand-big">XPENG</div>
+      <span class="logo" role="img" aria-label="OMODA &amp; JAECOO"></span>
       <div class="sub">Test Drive</div>
       <h1>Scan to join the queue</h1>
       <p class="lead">Get your queue number on your phone — we'll text you when a demo car is ready.</p>
-      <div id="qr"></div>
+      <div id="qr" role="img" aria-label="Scan this QR code to open test drive registration"></div>
       <div class="url" id="url"></div>
       <div class="steps">
         <div><b>1</b>Point your camera at the code</div>
-        <div><b>2</b>Pick L03 or X9 and enter your number</div>
+        <div><b>2</b>Choose a model and enter your number</div>
         <div><b>3</b>Relax — we'll text you</div>
       </div>
-      <div class="cars"><img src="/img/l03.png" alt="L03" /><img src="/img/x9.png" alt="X9" /></div>
+      <div class="cars"><img src="/img/j5.png" alt="JAECOO J5 HEV" /><img src="/img/j5ev.png" alt="JAECOO J5 BEV" /><img src="/img/ej6.png" alt="JAECOO EJ6" /><img src="/img/j7shs.png" alt="JAECOO J7 SHS" /></div>
     </section>
   </main>
 

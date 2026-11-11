@@ -24,7 +24,7 @@ function live(onUpdate, onCall) {
         for (const [id, calledAt] of now) {
           if (seen.get(id) !== calledAt) {
             const t = state.tickets.find((x) => x.number === id);
-            onCall({ number: t.number, model: t.model, name: t.name });
+            onCall({ number: t.number, model: t.model, name: t.name, callCount: t.callCount });
           }
         }
       }
@@ -68,6 +68,22 @@ function chime() {
       o.stop(t + 0.65);
     });
   } catch {}
+}
+
+// Spoken text only; keep in sync with lib/announce.js (checked by test/announce.test.cjs).
+function callAnnouncementText(ticket) {
+  const rawNumber = String(ticket.number || '');
+  const parts = rawNumber.match(/^([A-Za-z0-9]+)-(\d+)$/);
+  const digitWords = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+  const number = parts
+    ? `${[...parts[1]].join(' ')}, ${[...parts[2]].map((digit) => digitWords[Number(digit)]).join(' ')}`
+    : [...rawNumber].join(' ');
+  const name = String(ticket.name || '').replace(/<[^>]*>/g, '')
+    .replace(/[^\p{L}\s'\-.]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 60).trim();
+  const customer = name ? `, ${name}` : '';
+  return ticket.callCount > 1
+    ? `Now serving Queue Number ${number}${customer}. Please proceed to the Omoda Jaecoo Booth. Thank you!`
+    : `Queue Number ${number}${customer}. Please proceed to the Omoda Jaecoo Booth for your test drive.`;
 }
 
 function toast(msg) {

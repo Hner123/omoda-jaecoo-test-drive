@@ -3,69 +3,99 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>XPENG Test Drive Queue</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <title>OMODA & JAECOO Test Drive Queue</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
-<body>
+<body class="kiosk">
   <header class="topbar">
-    <a class="brand" href="/"><span class="logo" aria-hidden="true"></span>XPENG <small>Test Drive Queue</small></a>
+    <a class="brand" href="/"><span class="logo" role="img" aria-label="OMODA &amp; JAECOO"></span> <small>Test Drive Queue</small></a>
     <nav><a href="/" class="active">Join queue</a><a href="/display">Lobby display</a></nav>
   </header>
 
   <!-- Step 1: join form -->
-  <main class="wrap" id="join">
-    <p class="eyebrow">Book a test drive</p>
-    <h1>Choose your model</h1>
-    <p class="lead">Select the car you'd like to drive and get your queue number. We'll call you when a demo car is ready.</p>
+  <main id="join">
+    <div class="hero">
+      <img src="/img/event-banner.webp" width="1920" height="1081" fetchpriority="high" alt="Auto Focus Multibrand Test Drive Festival: O&amp;J exclusive test drive bonuses, SM Mall of Asia Concert Grounds, Pasay City, November 12-15, 2026" />
+    </div>
+    <section class="hero-copy" aria-labelledby="hero-title">
+        <p class="eyebrow">OMODA &amp; JAECOO Philippines</p>
+        <h1 id="hero-title">Book a test drive</h1>
+        <p>Discover your next drive. Choose your model and we'll call you when it's ready.</p>
+        <a class="btn ghost" href="#choose-model">Explore the models <span aria-hidden="true">↓</span></a>
+    </section>
+    <div class="wrap registration">
+      <section class="models" id="choose-model" aria-labelledby="models-title">
+        <div class="section-heading"><div><p class="eyebrow">01 / Explore the range</p><h2 id="models-title">Choose your model</h2></div><p class="muted">OMODA <span aria-hidden="true">|</span> JAECOO</p></div>
+        <div class="model-tabs" id="models" role="tablist" aria-label="Preview a model"></div>
+        <div id="model-stage" class="model-stage" role="tabpanel" tabindex="0"></div>
+        <p class="selection-note" id="model-selection" aria-live="polite">Preview a model, then select it to register.</p>
+      </section>
 
-    <div class="models" id="models" role="radiogroup" aria-label="Model"></div>
-
-    <form class="panel" id="form" autocomplete="off">
+    <form class="panel registration-form" id="form" autocomplete="off">
+      <p class="eyebrow">02 / Make it yours</p>
       <h2>Your details</h2>
       <div class="grid2">
         <div><label for="name">Full name</label><input id="name" type="text" required maxlength="60" placeholder="Juan Dela Cruz" /></div>
-        <div><label for="phone">Mobile number</label><input id="phone" type="tel" required maxlength="16" placeholder="09XX XXX XXXX" /></div>
+        <div><label for="gender">Gender</label><select id="gender" required><option value="">Please select</option><option value="male">Male</option><option value="female">Female</option></select></div>
         <div><label for="email">E-mail address</label><input id="email" type="email" required maxlength="120" placeholder="you@example.com" autocapitalize="off" /></div>
+        <div><label for="phone">Mobile number</label><input id="phone" type="tel" required maxlength="16" placeholder="09XX XXX XXXX" /></div>
         <div><label for="municipality">Municipality / city of residence</label><input id="municipality" type="text" required maxlength="80" placeholder="e.g. Quezon City" /></div>
         <div>
           <label for="customer-type">Customer type</label>
           <select id="customer-type" required>
             <option value="">Select one…</option>
             <option value="walk_in">Walk-in</option>
-            <option value="xpeng_ph">Signed up through XPENG Philippines</option>
+            <option value="oj_ph">Signed up thru OMODA & JAECOO Philippines</option>
             <option value="dealer">Invited by dealer / signed up through dealer</option>
           </select>
         </div>
-        <div id="dealer-wrap" hidden><label for="dealer">Inviting dealer</label><input id="dealer" type="text" maxlength="80" placeholder="Dealer name / branch" /></div>
+        <div id="dealer-wrap">
+          <label for="dealer">Location/Dealer</label>
+          <select id="dealer" required>
+            <option value="">Select dealership</option>
+          </select>
+        </div>
+        <div><label for="sales-executive">Assigned Sales Executive</label><input id="sales-executive" type="text" required maxlength="60" placeholder="Name of your sales executive" /></div>
+        <div><label for="test-drive-resource">Test drive resource</label><select id="test-drive-resource" required><option value="">Please select</option></select></div>
       </div>
       <div class="invite-note" id="invite-note" hidden></div>
       <div class="license">
         <div class="license-head">
           <div>
             <label style="margin:0">Driver's license</label>
-            <div class="muted" style="font-size:13px">Take a photo of the front of your card — we'll read the number and expiry for you. The photo is kept with your registration for verification.</div>
+            <div class="muted" style="font-size:13px">Take photos of both sides of your card. We'll try to read the number and expiry from the front; you can continue if they cannot be read. Both photos are required and kept with your registration for verification.</div>
           </div>
-          <label class="btn ghost sm" for="license-photo" id="scan-btn">📷 Scan license</label>
+        </div>
+        <div class="license-head back-capture">
+          <label for="license-photo">Driver's license photo (front)</label>
+          <button type="button" class="btn ghost sm" id="scan-btn">Take photo of front</button>
           <input type="file" id="license-photo" accept="image/*" capture="environment" hidden />
         </div>
         <div class="license-preview" id="license-preview" hidden>
-          <img id="license-img" alt="Your license photo" />
+          <img id="license-img" alt="Front of your driver's license" />
           <div class="license-status" id="license-status"></div>
         </div>
-        <div class="grid2" style="margin-top:14px">
-          <div><label for="license-no">License number</label><input id="license-no" type="text" required maxlength="20" placeholder="N01-23-456789" autocapitalize="characters" /></div>
-          <div><label for="license-exp">Expiration date</label><input id="license-exp" type="text" inputmode="numeric" required maxlength="10" placeholder="YYYY/MM/DD" autocomplete="off" /></div>
+        <div class="license-head back-capture">
+          <label for="license-photo-back">Driver's license photo (back)</label>
+          <button type="button" class="btn ghost sm" id="back-btn">Take photo of back</button>
+          <input type="file" id="license-photo-back" accept="image/*" capture="environment" hidden />
         </div>
+        <div class="license-preview" id="back-preview" hidden><img id="back-img" alt="Back of your driver's license" /><div class="license-status" id="back-status"></div></div>
         <div class="error" id="license-warn" style="margin-top:4px"></div>
       </div>
 
+      <div class="signature-section">
+        <div class="license-head"><label id="signature-label">Signature — draw to sign</label><button type="button" class="btn ghost sm" id="signature-clear">Clear</button></div>
+        <canvas id="signature" aria-labelledby="signature-label" aria-describedby="signature-help"></canvas>
+        <p class="muted" id="signature-help">Use your finger, pen or mouse to sign inside the box.</p>
+      </div>
+      <label class="check waiver-check"><input type="checkbox" id="consent" required /> <span>I agree that Omoda and Jaecoo Motor Philippines Inc., its dealers, may use my information to arrange the display and test drive and to contact me about Omoda and Jaecoo products, in line with the Data Privacy Act of 2012.</span></label>
       <label class="check waiver-check"><input type="checkbox" id="license" required /> <span>I have read, understood, and agree to the <button type="button" class="link-inline" id="open-waiver">waiver terms</button></span></label>
       <button class="btn" id="submit" type="submit" disabled>Get queue number</button>
       <div class="muted" id="missing" style="font-size:13px;margin-top:10px"></div>
       <div class="error" id="err"></div>
     </form>
+    </div>
   </main>
 
   <!-- Step 2: ticket -->
@@ -83,9 +113,9 @@
       </div>
       <div id="t-banner"></div>
     </div>
-    <p class="muted" style="font-size:14px;margin:20px 0;line-height:1.5">This page updates on its own. Feel free to walk around — your number stays saved on this device, so just come back to this page, or print the ticket and watch the lobby screen.</p>
+    <p class="muted" style="font-size:14px;margin:20px 0;line-height:1.5">This page updates on its own. Feel free to walk around: your number stays saved on this device, so just come back to this page, or save the ticket to your phone and watch the lobby screen.</p>
     <div class="ticket-actions">
-      <button class="btn block" id="print">Print ticket</button>
+      <button class="btn block" id="save-ticket">Save ticket to my phone</button>
       <button class="btn ghost block" id="new">New registration</button>
       <button class="link-btn" id="leave">Leave queue</button>
     </div>
@@ -96,16 +126,16 @@
     <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="waiver-title">
       <h2 id="waiver-title">Test Drive Waiver</h2>
       <div class="modal-body" id="waiver-body">
-        <p>I, the participant, willingly consent to participate in the <b>Auto Focus Pre-Christmas Multibrand Test Drive Festival</b>, hosted by XPENG Philippines (hereafter referred to as "the Event"). By selecting "I have read, understood, and agree to the waiver terms" below, I acknowledge and adhere to the following terms and conditions:</p>
+        <p>I, the participant, willingly consent to participate in the <b>Auto Focus Pre-Christmas Multibrand Test Drive Festival</b>, hosted by OMODA & JAECOO Philippines (hereafter referred to as "the Event"). By selecting "I have read, understood, and agree to the waiver terms" below, I acknowledge and adhere to the following terms and conditions:</p>
         <ol>
           <li><b>Acknowledgment of Risks:</b> I recognize that participating in a test drive event carries inherent risks, which may include, but are not limited to, accidents, personal injury, or damage to property. By participating, I fully acknowledge and accept these risks.</li>
-          <li><b>Release of Liability:</b> I hereby release, indemnify, and hold harmless XPENG Philippines, along with its employees, agents, volunteers, and any event sponsors or partners, from any and all liability for any injury, loss, or damage to persons or property that may arise during the Event.</li>
+          <li><b>Release of Liability:</b> I hereby release, indemnify, and hold harmless OMODA & JAECOO Philippines, along with its employees, agents, volunteers, and any event sponsors or partners, from any and all liability for any injury, loss, or damage to persons or property that may arise during the Event.</li>
           <li><b>Assumption of Responsibility:</b> I acknowledge that I am responsible for operating any vehicle provided during the Event in a safe and responsible manner. I agree to comply with all traffic laws, adhere to instructions from Event organizers, and exercise due care while driving.</li>
-          <li><b>Use of Likeness:</b> I hereby grant XPENG Philippines, Inc. the right to use my image, likeness, or voice in photographs, videos, or any other media for promotional or marketing purposes related to the Event.</li>
+          <li><b>Use of Likeness:</b> I hereby grant OMODA & JAECOO Philippines the right to use my image, likeness, or voice in photographs, videos, or any other media for promotional or marketing purposes related to the Event.</li>
           <li><b>Binding Agreement:</b> I understand that this waiver and release of liability shall be binding upon me, as well as my heirs, executors, administrators, and assigns.</li>
         </ol>
         <p>By proceeding, I confirm that I have read and fully understand the terms of this waiver. I acknowledge that my participation in the event is voluntary and that I am aware of the potential risks involved.</p>
-        <p class="muted" style="font-size:13px">I will present a valid driver's license to staff before the test drive. I consent to XPENG Philippines keeping a copy of my license photo and details for verification of this test drive, and I agree to receive SMS updates about my queue number.</p>
+        <p class="muted" style="font-size:13px">I will present a valid driver's license to staff before the test drive. I consent to OMODA & JAECOO Philippines keeping a copy of my license photo and details for verification of this test drive, and I agree to receive SMS updates about my queue number.</p>
       </div>
       <div class="modal-actions">
         <button type="button" class="btn ghost" id="waiver-decline">Cancel</button>
@@ -114,46 +144,117 @@
     </div>
   </div>
 
-  <!-- Print-only ticket stub (shown via @media print) -->
-  <section class="stub" id="stub" aria-hidden="true">
-    <div class="stub-head">
-      <div class="stub-brand"><span class="logo" style="width:40px;height:22px;display:block;margin:0 auto 6px"></span>XPENG<br />Test Drive</div>
-      <div class="stub-sub">Your queue ticket</div>
-    </div>
-    <div class="stub-num" id="s-num"></div>
-    <div class="stub-model" id="s-model"></div>
-    <table class="stub-rows">
-      <tr><td>Name</td><td id="s-name"></td></tr>
-      <tr><td>Contact</td><td id="s-phone"></td></tr>
-      <tr><td>License</td><td id="s-license"></td></tr>
-      <tr><td>Date</td><td id="s-date"></td></tr>
-      <tr><td>Position</td><td id="s-pos"></td></tr>
-    </table>
-    <div class="stub-foot">Please keep this ticket and listen for your number.<br />Present your driver's license at the front desk when called.</div>
-  </section>
-
   <script src="/common.js"></script>
+  <script src="/ticket-image.js"></script>
   <script>
     let models = [];
+    let dealers = [];
+    let dealerSignature = null;
     let selected = null;
+    let previewed = null;
+    const showcasePreloads = [];
+    let showcasePreloadsStarted = false;
     let myTicketId = new URLSearchParams(location.search).get('t') || localStorage.getItem('xpq-ticket');
 
+    function loadStageImage(stage, img, model) {
+      const loader = stage.querySelector('.stage-loader');
+      let fallback = !model.showcase || model.showcase === model.image;
+      let settled = false;
+      const isCurrent = () => stage.querySelector('img') === img;
+      const finish = (loaded) => {
+        if (settled || !isCurrent()) return;
+        settled = true;
+        img.classList.toggle('is-loaded', loaded);
+        loader.hidden = true;
+      };
+      const checkCached = () => {
+        if (img.complete && img.naturalWidth) finish(true);
+      };
+      img.addEventListener('load', () => {
+        if (img.naturalWidth) finish(true);
+      });
+      img.addEventListener('error', () => {
+        if (settled || !isCurrent()) return;
+        if (!fallback && model.image) {
+          fallback = true;
+          img.src = model.image;
+          checkCached();
+        } else finish(false);
+      });
+      // Attach handlers before assigning src, then cover an immediate cache hit.
+      img.src = model.showcase || model.image;
+      checkCached();
+    }
+
     function renderModels() {
-      $('#models').innerHTML = models.map((m) => `
-        <button type="button" class="model" role="radio" aria-checked="${m.id === selected}" data-id="${m.id}">
-          <span class="radio"></span>
-          <div class="name">${esc(m.name)}</div>
-          <div class="tag">${esc(m.tagline)}</div>
-          <img src="${m.image}" alt="XPENG ${esc(m.name)}" />
-          <div class="meta"><span><b>${m.waitingCount}</b> in queue</span><span>Est. wait <b>${m.estWaitMin ? m.estWaitMin + ' min' : 'none'}</b></span></div>
-        </button>`).join('');
+      const tabs = $('#models');
+      if (!models.length) return;
+      if (!models.some((m) => m.id === previewed)) previewed = models[0].id;
+      // Keep the tabs and active image mounted during polling so focus and scroll stay put.
+      const signature = models.map((m) => m.id).join('|');
+      if (tabs.dataset.models !== signature) {
+        tabs.innerHTML = models.map((m) => `<button type="button" class="model-tab" role="tab" id="tab-${esc(m.id)}" data-id="${esc(m.id)}" aria-controls="model-stage" aria-selected="false" tabindex="-1"><small>${esc(m.brand)}</small><span>${esc(m.name.replace(m.brand + ' ', ''))}</span></button>`).join('');
+        tabs.dataset.models = signature;
+      }
+      tabs.querySelectorAll('[role="tab"]').forEach((tab) => {
+        const active = tab.dataset.id === previewed;
+        tab.setAttribute('aria-selected', String(active));
+        tab.tabIndex = active ? 0 : -1;
+      });
+      const m = models.find((m) => m.id === previewed);
+      const stage = $('#model-stage');
+      stage.setAttribute('aria-labelledby', 'tab-' + m.id);
+      if (stage.dataset.model !== m.id) {
+        stage.innerHTML = `<div class="stage-visual"><span class="stage-word" aria-hidden="true">${esc(m.name.replace(m.brand + ' ', ''))}</span><button type="button" class="car-select" data-choose="${esc(m.id)}" aria-label="Select ${esc(m.name)} for your test drive" aria-pressed="false"><img alt="${esc(m.name)}" /></button><div class="stage-loader" role="status" aria-live="polite"><span class="stage-spinner" aria-hidden="true"></span><span>Loading…</span></div></div><div class="stage-stats"><div><b id="model-waiting"></b> <span>in queue</span></div><div><span>Est. wait</span> <b id="model-wait"></b></div><button type="button" class="btn ghost" id="model-select" data-choose="${esc(m.id)}" aria-pressed="false">Select</button></div>`;
+        const img = stage.querySelector('img');
+        loadStageImage(stage, img, m);
+        stage.dataset.model = m.id;
+      }
+      $('#model-waiting').textContent = m.waitingCount;
+      $('#model-wait').textContent = m.waitingCount ? `${m.estWaitMin} min` : 'none';
+      const chosen = selected === m.id;
+      stage.querySelectorAll('[data-choose]').forEach((button) => button.setAttribute('aria-pressed', String(chosen)));
+      $('#model-select').textContent = chosen ? 'Selected' : 'Select';
+      $('#model-select').setAttribute('aria-label', `${chosen ? 'Selected' : 'Select'} ${m.name} for your test drive`);
+      const selection = models.find((m) => m.id === selected);
+      const note = selection ? `${selection.name} selected for your test drive. Complete your details below.` : 'Preview a model, then select it to register.';
+      if ($('#model-selection').textContent !== note) $('#model-selection').textContent = note;
       validate();
+      if (!showcasePreloadsStarted) {
+        showcasePreloadsStarted = true;
+        const sources = models.map((model) => model.showcase).filter(Boolean);
+        setTimeout(() => {
+          for (const src of new Set(sources)) {
+            const image = new Image();
+            image.src = src;
+            showcasePreloads.push(image);
+          }
+        }, 0);
+      }
     }
 
     $('#models').addEventListener('click', (e) => {
-      const card = e.target.closest('.model');
-      if (!card) return;
-      selected = card.dataset.id;
+      const tab = e.target.closest('[role="tab"]');
+      if (!tab) return;
+      previewed = tab.dataset.id;
+      renderModels();
+    });
+    $('#models').addEventListener('keydown', (e) => {
+      if (!e.target.closest('[role="tab"]')) return;
+      const index = models.findIndex((m) => m.id === previewed);
+      const next = e.key === 'ArrowRight' ? (index + 1) % models.length : e.key === 'ArrowLeft' ? (index - 1 + models.length) % models.length : e.key === 'Home' ? 0 : e.key === 'End' ? models.length - 1 : null;
+      if (next === null) return;
+      e.preventDefault();
+      previewed = models[next].id;
+      renderModels();
+      const tab = document.getElementById('tab-' + previewed);
+      tab.focus({ preventScroll: true });
+      tab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+    $('#model-stage').addEventListener('click', (e) => {
+      const button = e.target.closest('[data-choose]');
+      if (!button) return;
+      selected = button.dataset.choose;
       renderModels();
     });
     // If they reach the button with no car picked, take them back to the cards.
@@ -162,13 +263,28 @@
     function todayLocal() {
       return new Date().toLocaleDateString('en-CA');
     }
-    // "Inviting dealer" only applies to customers who came through a dealer.
-    $('#customer-type').addEventListener('change', (e) => {
-      const viaDealer = e.target.value === 'dealer';
-      $('#dealer-wrap').hidden = !viaDealer;
-      if (!viaDealer) $('#dealer').value = '';
-      validate();
-    });
+    function renderDealers() {
+      const signature = JSON.stringify(dealers);
+      if (signature === dealerSignature) return;
+      dealerSignature = signature;
+      const select = $('#dealer');
+      const previous = select.value;
+      select.innerHTML = '<option value="">Select dealership</option>' +
+        dealers.map((name) => `<option value="${esc(name)}">${esc(name)}</option>`).join('');
+      if (invitedBy) setInvite(invitedBy);
+      else select.value = previous;
+    }
+    function clearDealer() {
+      $('#dealer').querySelectorAll('[data-invite]').forEach((option) => option.remove());
+      $('#dealer').value = '';
+      $('#dealer').disabled = false;
+      $('#dealer').required = true;
+    }
+    function dealerValue() {
+      return $('#dealer').value;
+    }
+    $('#dealer').addEventListener('change', validate);
+    $('#customer-type').addEventListener('change', validate);
 
     // Dealer guest list: a mobile number or e-mail on the list fills in and locks the customer type and dealer.
     let invitedBy = null;
@@ -178,9 +294,21 @@
       if (!dealer && !invitedBy) return;
       $('#customer-type').disabled = !!dealer;
       $('#customer-type').value = dealer ? 'dealer' : '';
-      $('#dealer').readOnly = !!dealer;
-      $('#dealer').value = dealer || '';
-      $('#dealer-wrap').hidden = !dealer;
+      clearDealer();
+      if (dealer) {
+        const listed = dealers.find((d) => d.toLowerCase() === dealer.trim().toLowerCase());
+        if (listed) $('#dealer').value = listed;
+        else {
+          const option = document.createElement('option');
+          option.value = dealer;
+          option.textContent = dealer;
+          option.dataset.invite = '';
+          $('#dealer').append(option);
+          $('#dealer').value = dealer;
+          option.selected = true;
+        }
+      }
+      $('#dealer').disabled = !!dealer;
       $('#invite-note').hidden = !dealer;
       $('#invite-note').textContent = dealer ? `We found your invitation from ${dealer}.` : '';
       invitedBy = dealer;
@@ -203,37 +331,38 @@
       });
     }
 
-    // Expiry is typed as printed on the card (YYYY/MM/DD); slashes are added as you type.
-    $('#license-exp').addEventListener('input', (e) => {
-      const d = e.target.value.replace(/\D/g, '').slice(0, 8);
-      e.target.value = d.length > 6 ? `${d.slice(0, 4)}/${d.slice(4, 6)}/${d.slice(6)}` : d.length > 4 ? `${d.slice(0, 4)}/${d.slice(4)}` : d;
-    });
-    function expiryIso() {
-      const m = $('#license-exp').value.match(/^(\d{4})\/(\d{2})\/(\d{2})$/);
+    // Scan details are optional; customers only provide the photos and signature.
+    let licenseNumber = null;
+    let licenseExpiry = null;
+    function scanExpiry(value) {
+      const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
       if (!m) return null;
       const [y, mo, d] = [+m[1], +m[2], +m[3]];
-      const dt = new Date(y, mo - 1, d); // local time, so no UTC day-shift
-      const real = dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d; // rejects 2029/13/40
-      return real ? `${m[1]}-${m[2]}-${m[3]}` : null;
+      const dt = new Date(y, mo - 1, d);
+      return dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d ? value : null;
     }
     function validate() {
-      const raw = $('#license-exp').value;
-      const exp = expiryIso();
+      const exp = licenseExpiry;
       const expired = exp && exp < todayLocal();
       $('#license-warn').textContent = expired
         ? `This license expired on ${cardDate(exp)}. A valid license is required to test drive.`
-        : raw.length === 10 && !exp ? 'Please enter a valid date as YYYY/MM/DD.' : '';
+        : '';
       const missing = [
         !selected && 'choose a model above',
         !$('#name').value.trim() && 'enter your name',
+        !$('#gender').value && 'select your gender',
         !$('#phone').value.trim() && 'enter your mobile number',
         !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test($('#email').value.trim()) && 'enter a valid e-mail address',
         !$('#municipality').value.trim() && 'enter your municipality',
         !$('#customer-type').value && 'select a customer type',
-        $('#customer-type').value === 'dealer' && !$('#dealer').value.trim() && 'enter the inviting dealer',
-        !$('#license-no').value.trim() && 'enter your license number',
-        !exp && 'enter the expiration date',
+        !dealerValue() && 'select a location/dealer',
+        !$('#sales-executive').value.trim() && 'enter your assigned sales executive',
+        !$('#test-drive-resource').value && 'select a test drive resource',
+        !licensePhoto && 'add a photo of the front of your license',
+        !licensePhotoBack && 'add a photo of the back of your license',
         expired && 'a valid (unexpired) license',
+        !signatureHasInk && 'draw your signature',
+        !$('#consent').checked && 'agree to the data privacy consent',
         !$('#license').checked && 'agree to the waiver',
       ].filter(Boolean);
       $('#submit').disabled = missing.length > 0;
@@ -241,7 +370,7 @@
     }
     $('#form').addEventListener('input', validate);
 
-    // ---- license scan: downsize the photo in the browser, send it for reading, fill the fields ----
+    // ---- license scan: downsize the photo in the browser, send it for reading, retain optional details ----
     function downsize(file, max = 1280) {
       return new Promise((resolve, reject) => {
         const url = URL.createObjectURL(file);
@@ -253,43 +382,184 @@
           c.height = Math.round(img.height * scale);
           c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
           URL.revokeObjectURL(url);
-          resolve(c.toDataURL('image/jpeg', 0.85));
+          let dataUrl = c.toDataURL('image/jpeg', 0.8);
+          // Bound each decoded photo below 500 KB, including noisy high-detail captures.
+          while (dataUrl.length > 640000) {
+            const smaller = document.createElement('canvas');
+            smaller.width = Math.max(1, Math.round(c.width * 0.8));
+            smaller.height = Math.max(1, Math.round(c.height * 0.8));
+            smaller.getContext('2d').drawImage(c, 0, 0, smaller.width, smaller.height);
+            c.width = smaller.width;
+            c.height = smaller.height;
+            c.getContext('2d').drawImage(smaller, 0, 0);
+            dataUrl = c.toDataURL('image/jpeg', 0.8);
+          }
+          resolve(dataUrl);
         };
-        img.onerror = () => reject(new Error('Could not read that image'));
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that image')); };
         img.src = url;
       });
     }
+    let licensePhotoBack = null;
+    let registrationVersion = 0;
     let licensePhoto = null; // the downsized JPEG from the last scan, sent along with the registration
+    $('#scan-btn').onclick = () => $('#license-photo').click();
     $('#license-photo').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
+      const version = registrationVersion;
+      licenseNumber = null;
+      licenseExpiry = null;
+      validate();
       const status = $('#license-status');
       $('#license-preview').hidden = false;
       $('#scan-btn').classList.add('busy');
-      status.textContent = 'Reading your license…';
+      status.textContent = 'Saving photo…';
       status.className = 'license-status';
+      let photoSaved = false;
       try {
         const dataUrl = await downsize(file);
+        if (version !== registrationVersion) return;
         $('#license-img').src = dataUrl;
         licensePhoto = dataUrl;
+        photoSaved = true;
+        status.textContent = 'Front photo saved for this registration.';
+        status.className = 'license-status ok';
+        $('#scan-btn').textContent = 'Retake front photo';
         const r = await api('/api/license-scan', { method: 'POST', body: { image: dataUrl, mediaType: 'image/jpeg' } });
-        if (r.licenseNumber) $('#license-no').value = r.licenseNumber;
-        if (r.expiry) $('#license-exp').value = cardDate(r.expiry);
+        if (version !== registrationVersion) return;
+        licenseNumber = r.licenseNumber || null;
+        licenseExpiry = scanExpiry(r.expiry);
         if (r.name && !$('#name').value.trim()) $('#name').value = r.name;
-        const missing = [!r.licenseNumber && 'number', !r.expiry && 'expiry'].filter(Boolean);
-        status.textContent = missing.length
-          ? `Couldn't read the ${missing.join(' and ')} — please type it below.`
-          : r.confidence === 'high' ? 'Read successfully — please double-check the details below.' : 'Read with some uncertainty — please check the details below.';
-        status.className = 'license-status ' + (missing.length ? 'warn' : 'ok');
       } catch (err) {
-        status.textContent = err.message + ' You can type the details below instead.';
-        status.className = 'license-status warn';
+        if (version !== registrationVersion) return;
+        if (!photoSaved) {
+          status.textContent = "Couldn't use that photo. Please try again.";
+          status.className = 'license-status warn';
+        }
       } finally {
         $('#scan-btn').classList.remove('busy');
         e.target.value = '';
         validate();
       }
     });
+
+    $('#back-btn').onclick = () => $('#license-photo-back').click();
+    $('#license-photo-back').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const version = registrationVersion;
+      $('#back-btn').classList.add('busy');
+      try {
+        const dataUrl = await downsize(file);
+        if (version !== registrationVersion) return;
+        licensePhotoBack = dataUrl;
+        $('#back-img').src = dataUrl;
+        $('#back-preview').hidden = false;
+        $('#back-status').textContent = 'Back photo saved for this registration.';
+        $('#back-btn').textContent = 'Retake back photo';
+      } catch (err) {
+        if (version === registrationVersion) $('#err').textContent = err.message;
+      } finally {
+        $('#back-btn').classList.remove('busy');
+        e.target.value = '';
+        validate();
+      }
+    });
+
+    // Keep normalized strokes so resizing or rotating the device preserves the signature.
+    const signatureCanvas = $('#signature');
+    let signatureStrokes = [];
+    let signatureHasInk = false;
+    let signaturePointer = null;
+    function drawSignature(canvas, width, height) {
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, width, height);
+      ctx.strokeStyle = '#1f2933';
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (const stroke of signatureStrokes) {
+        ctx.beginPath();
+        stroke.forEach(([x, y], i) => i ? ctx.lineTo(x * width, y * height) : ctx.moveTo(x * width, y * height));
+        ctx.stroke();
+      }
+    }
+    function resizeSignature() {
+      const { width, height } = signatureCanvas.getBoundingClientRect();
+      if (!width || !height) return;
+      const ratio = window.devicePixelRatio || 1;
+      signatureCanvas.width = Math.round(width * ratio);
+      signatureCanvas.height = Math.round(height * ratio);
+      signatureCanvas.getContext('2d').scale(ratio, ratio);
+      drawSignature(signatureCanvas, width, height);
+    }
+    function signaturePoint(e) {
+      const rect = signatureCanvas.getBoundingClientRect();
+      return [Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)), Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height))];
+    }
+    signatureCanvas.addEventListener('pointerdown', (e) => {
+      if (signaturePointer !== null || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      e.preventDefault();
+      signaturePointer = e.pointerId;
+      signatureCanvas.setPointerCapture(e.pointerId);
+      signatureStrokes.push([signaturePoint(e)]);
+    });
+    signatureCanvas.addEventListener('pointermove', (e) => {
+      if (e.pointerId !== signaturePointer) return;
+      const stroke = signatureStrokes[signatureStrokes.length - 1];
+      const point = signaturePoint(e);
+      const previous = stroke[stroke.length - 1];
+      if (Math.hypot(point[0] - previous[0], point[1] - previous[1]) < 0.003) return;
+      stroke.push(point);
+      signatureHasInk = true;
+      resizeSignature();
+      validate();
+    });
+    for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+      signatureCanvas.addEventListener(event, (e) => {
+        if (e.pointerId === signaturePointer) signaturePointer = null;
+      });
+    }
+    function clearSignature() {
+      signatureStrokes = [];
+      signatureHasInk = false;
+      signaturePointer = null;
+      resizeSignature();
+    }
+    function signatureData() {
+      // Export at CSS resolution, independent of screen DPR, to stay below 300 KB.
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.min(800, Math.round(signatureCanvas.getBoundingClientRect().width) || 800);
+      canvas.height = 180;
+      drawSignature(canvas, canvas.width, canvas.height);
+      return canvas.toDataURL('image/png');
+    }
+    $('#signature-clear').onclick = () => { clearSignature(); validate(); };
+    new ResizeObserver(resizeSignature).observe(signatureCanvas);
+    resizeSignature();
+
+    function clearRegistration() {
+      registrationVersion++;
+      lookupSeq++;
+      clearTimeout(lookupTimer);
+      $('#form').reset();
+      selected = null;
+      licensePhoto = null;
+      licensePhotoBack = null;
+      licenseNumber = null;
+      licenseExpiry = null;
+      for (const id of ['#license-preview', '#back-preview']) $(id).hidden = true;
+      for (const id of ['#license-img', '#back-img']) $(id).removeAttribute('src');
+      for (const id of ['#license-status', '#back-status', '#license-warn', '#err']) $(id).textContent = '';
+      $('#scan-btn').textContent = 'Take photo of front';
+      $('#back-btn').textContent = 'Take photo of back';
+      setInvite(null);
+      clearDealer();
+      clearSignature();
+      validate();
+    }
 
     // ---- waiver modal: the box is only tickable through the modal ----
     const waiver = $('#waiver');
@@ -326,16 +596,23 @@
           body: {
             model: selected,
             name: $('#name').value,
+            gender: $('#gender').value,
             phone: $('#phone').value,
             email: $('#email').value,
             municipality: $('#municipality').value,
             customerType: $('#customer-type').value,
-            dealer: $('#dealer').value,
-            licenseNumber: $('#license-no').value,
-            licenseExpiry: expiryIso(),
+            dealer: dealerValue(),
+            salesExecutive: $('#sales-executive').value,
+            testDriveResource: $('#test-drive-resource').value,
+            consent: $('#consent').checked,
+            signature: signatureHasInk ? signatureData() : null,
+            licenseNumber,
+            licenseExpiry,
             licensePhoto,
+            licensePhotoBack,
           },
         });
+        clearRegistration();
         showTicket(ticket.id);
       } catch (err) {
         $('#err').textContent = err.message;
@@ -345,12 +622,14 @@
 
     // ---- ticket view ----
     let lastStatus = null;
+    let ticketImageData = null;
     async function showTicket(id) {
       myTicketId = id;
       localStorage.setItem('xpq-ticket', id);
       history.replaceState(null, '', '/?t=' + id);
       $('#join').hidden = true;
       $('#ticket').hidden = false;
+      document.body.classList.add('ticket-mode');
       await refreshTicket();
     }
 
@@ -361,28 +640,30 @@
         const m = models.find((x) => x.id === t.model) || {};
         $('#t-num').textContent = t.number;
         $('#t-name').textContent = t.name;
-        $('#t-img').src = m.image || '';
-        $('#t-model').textContent = 'XPENG ' + (m.name || t.model);
+        $('#t-img').hidden = !m.image;
+        if (m.image) $('#t-img').src = m.image;
+        else $('#t-img').removeAttribute('src');
+        $('#t-img').alt = m.name || t.model;
+        $('#t-model').textContent = m.name || t.model;
         $('#t-status').className = 'pill ' + t.status;
         $('#t-status').textContent = STATUS_LABEL[t.status];
         $('#t-stats').hidden = t.status !== 'waiting';
         $('#t-pos').textContent = Math.max(position - 1, 0);
         $('#t-eta').textContent = m.minutes ? Math.max(0, Math.ceil((position - 1) / m.units)) * m.minutes + ' min' : '–';
         $('#t-banner').innerHTML =
-          t.status === 'called' ? '<div class="called-banner">It\'s your turn! Please proceed to the front desk with your driver\'s license.</div>' :
+          t.status === 'called' ? '<div class="called-banner">It\'s your turn! Please proceed to the OMODA JAECOO Booth with your driver\'s license.</div>' :
           t.status === 'driving' ? '<p class="muted">Enjoy your drive!</p>' :
-          t.status === 'done' ? '<p class="muted">Thanks for test driving XPENG.</p>' :
-          t.status === 'noshow' ? '<p class="muted">We called your number but couldn\'t find you. Please see the front desk.</p>' : '';
+          t.status === 'done' ? '<p class="muted">Thanks for test driving OMODA & JAECOO.</p>' :
+          t.status === 'noshow' ? '<p class="muted">We called your number but couldn\'t find you. Please see our staff at the OMODA JAECOO Booth.</p>' : '';
         $('#leave').hidden = !['waiting', 'called'].includes(t.status);
-        $('#print').hidden = !['waiting', 'called'].includes(t.status);
-        // fill the print stub
-        $('#s-num').textContent = t.number;
-        $('#s-model').textContent = 'XPENG ' + (m.name || t.model);
-        $('#s-name').textContent = t.name;
-        $('#s-phone').textContent = t.phone;
-        $('#s-license').textContent = t.licenseNumber ? `${t.licenseNumber} · exp ${cardDate(t.licenseExpiry)}` : '—';
-        $('#s-date').textContent = new Date(t.createdAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
-        $('#s-pos').textContent = t.status === 'waiting' ? position : STATUS_LABEL[t.status];
+        $('#save-ticket').hidden = !['waiting', 'called'].includes(t.status);
+        ticketImageData = {
+          number: t.number,
+          firstName: String(t.name || '').trim().split(/\s+/)[0],
+          modelName: m.name || t.model,
+          createdAt: t.createdAt,
+          carImage: m.image,
+        };
         if (t.status === 'called' && lastStatus && lastStatus !== 'called') {
           chime();
           navigator.vibrate && navigator.vibrate([300, 150, 300]);
@@ -395,22 +676,32 @@
 
     function resetToForm() {
       myTicketId = null;
+      ticketImageData = null;
       lastStatus = null;
       localStorage.removeItem('xpq-ticket');
       history.replaceState(null, '', '/');
-      $('#form').reset();
-      selected = null;
-      licensePhoto = null;
-      $('#license-preview').hidden = true;
-      setInvite(null);
-      $('#dealer-wrap').hidden = true;
+      clearRegistration();
       renderModels();
       $('#ticket').hidden = true;
       $('#join').hidden = false;
+      document.body.classList.remove('ticket-mode');
     }
 
     $('#new').onclick = resetToForm;
-    $('#print').onclick = () => window.print();
+    $('#save-ticket').onclick = async () => {
+      const button = $('#save-ticket');
+      if (button.disabled || !ticketImageData) return;
+      button.disabled = true;
+      button.textContent = 'Preparing…';
+      try {
+        await saveTicketImage(ticketImageData);
+      } catch {
+        toast("Couldn't save the ticket. Please take a screenshot instead.");
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Save ticket to my phone';
+      }
+    };
     $('#leave').onclick = async () => {
       const ok = await confirmModal({
         title: 'Leave the queue?',
@@ -426,6 +717,16 @@
 
     live((state) => {
       models = state.models;
+      dealers = state.dealers || [];
+      renderDealers();
+      const resourceSelect = $('#test-drive-resource');
+      const resourceSignature = JSON.stringify(state.testDriveResources || {});
+      if (resourceSelect.dataset.options !== resourceSignature) {
+        const previous = resourceSelect.value;
+        resourceSelect.innerHTML = '<option value="">Please select</option>' + Object.entries(state.testDriveResources || {}).map(([key, label]) => `<option value="${esc(key)}">${esc(label)}</option>`).join('');
+        resourceSelect.value = previous;
+        resourceSelect.dataset.options = resourceSignature;
+      }
       if (!$('#join').hidden) renderModels();
       if (myTicketId && $('#ticket').hidden) showTicket(myTicketId);
       else refreshTicket();
