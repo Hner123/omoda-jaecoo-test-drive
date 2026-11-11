@@ -16,6 +16,7 @@ const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'queue.json');
 const LICENSE_DIR = path.join(DATA_DIR, 'licenses'); // front, back and signature files per ticket
 const GUESTS_FILE = path.join(DATA_DIR, 'guests.json'); // dealer guest list, kept across days
+const FLEET_FILE = path.join(DATA_DIR, 'fleet.json'); // fleet settings survive queue resets
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 // ---------- persistence ----------
@@ -57,6 +58,17 @@ function loadGuests() {
 function saveGuests(list) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(GUESTS_FILE, JSON.stringify(list, null, 2));
+}
+
+function loadFleet() {
+  try { return JSON.parse(fs.readFileSync(FLEET_FILE, 'utf8')); }
+  catch { return {}; }
+}
+
+function saveFleet(fleet) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(FLEET_FILE + '.tmp', JSON.stringify(fleet, null, 2));
+  fs.renameSync(FLEET_FILE + '.tmp', FLEET_FILE);
 }
 
 function rollover() {
@@ -118,7 +130,7 @@ const server = http.createServer(async (req, res) => {
   try {
     rollover();
 
-    if (pathname === '/api/state' && req.method === 'GET') return send(res, 200, Q.publicState(state));
+    if (pathname === '/api/state' && req.method === 'GET') return send(res, 200, Q.publicState(state, loadFleet()));
 
     if (pathname === '/api/announce' && req.method === 'GET') {
       const result = await announce(state, new URL(req.url, 'http://localhost').searchParams.get('number'));
@@ -145,7 +157,7 @@ const server = http.createServer(async (req, res) => {
       }
       save();
       const position = Q.position(state, t);
-      N.welcome(state, t, position); // fire-and-forget locally
+      N.welcome(state, t, position, loadFleet()); // fire-and-forget locally
       return send(res, 201, { ticket: Q.customerTicket(t), position });
     }
 
@@ -176,7 +188,14 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/staff/tickets' && req.method === 'GET') {
       requireStaff(req);
       if (await N.refreshCallSms(state)) save();
-      return send(res, 200, { ...Q.publicState(state), tickets: state.tickets });
+      return send(res, 200, { ...Q.publicState(state, loadFleet()), tickets: state.tickets });
+    }
+
+    if (pathname === '/api/staff/fleet' && req.method === 'POST') {
+      requireStaff(req);
+      const { model, units } = Q.validateFleet(await readBody(req));
+      saveFleet({ ...loadFleet(), [model]: units });
+      return send(res, 200, { ok: true, units });
     }
 
     if (pathname === '/api/staff/guests') {
@@ -247,7 +266,7 @@ const server = http.createServer(async (req, res) => {
       const files = fs.existsSync(DATA_DIR) ? fs.readdirSync(DATA_DIR).filter((f) => f.startsWith(`queue-${m[1]}`)) : [];
       const states = files.map((f) => JSON.parse(fs.readFileSync(path.join(DATA_DIR, f), 'utf8')));
       if (state.date === m[1]) states.push(state);
-      return send(res, 200, Q.mergeDay(m[1], states));
+      return send(res, 200, Q.mergeDay(m[1], states, loadFleet()));
     }
 
     if (pathname === '/api/staff/reset' && req.method === 'POST') {

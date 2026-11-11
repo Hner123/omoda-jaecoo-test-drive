@@ -45,6 +45,10 @@ async function loadGuests() {
   return (await store().get('guest-list', { type: 'json' })) || { guests: [] };
 }
 
+async function loadFleet() {
+  return (await store().get('fleet', { type: 'json' })) || {};
+}
+
 // ---------- http helpers ----------
 function json(status, body) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
@@ -68,7 +72,7 @@ export default async (req) => {
   const { pathname } = new URL(req.url);
   const method = req.method;
   try {
-    if (pathname === '/api/state' && method === 'GET') return json(200, Q.publicState(await load()));
+    if (pathname === '/api/state' && method === 'GET') return json(200, Q.publicState(await load(), await loadFleet()));
 
     if (pathname === '/api/announce' && method === 'GET') {
       const result = await announce(load, new URL(req.url).searchParams.get('number'));
@@ -97,7 +101,7 @@ export default async (req) => {
       }
       await save(state);
       const position = Q.position(state, t);
-      await N.welcome(state, t, position);
+      await N.welcome(state, t, position, await loadFleet());
       return json(201, { ticket: Q.customerTicket(t), position });
     }
 
@@ -130,7 +134,14 @@ export default async (req) => {
       requireStaff(req);
       const state = await load();
       if (await N.refreshCallSms(state)) await save(state);
-      return json(200, { ...Q.publicState(state), tickets: state.tickets });
+      return json(200, { ...Q.publicState(state, await loadFleet()), tickets: state.tickets });
+    }
+
+    if (pathname === '/api/staff/fleet' && method === 'POST') {
+      requireStaff(req);
+      const { model, units } = Q.validateFleet(await readBody(req));
+      await store().setJSON('fleet', { ...await loadFleet(), [model]: units });
+      return json(200, { ok: true, units });
     }
 
     if (pathname === '/api/staff/guests') {
@@ -204,7 +215,7 @@ export default async (req) => {
       requireStaff(req);
       const { blobs } = await store().list({ prefix: m[1] });
       const states = (await Promise.all(blobs.map((b) => store().get(b.key, { type: 'json' })))).filter(Boolean);
-      return json(200, Q.mergeDay(m[1], states));
+      return json(200, Q.mergeDay(m[1], states, await loadFleet()));
     }
 
     if (pathname === '/api/staff/reset' && method === 'POST') {

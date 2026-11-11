@@ -438,3 +438,10 @@ body.staff.q-open { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .staff .q-drawer, .staff .q-scrim, .staff .q-tog, .staff .q-tog::after { transition: none; }
 }
+
+.staff .q-fleet { display: flex; align-items: center; justify-content: space-between; gap: 4px; margin-top: 8px; font-size: 12px; font-weight: 600; }
+.staff .q-fleet.out { color: #a36308; }
+.staff .q-fleet-buttons { display: inline-flex; gap: 4px; flex-shrink: 0; }
+.staff .q-fleet button { width: 26px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--ink); cursor: pointer; font: inherit; font-size: 16px; }
+.staff .q-fleet button:disabled { opacity: .4; cursor: default; }
+.staff .q-fleet button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

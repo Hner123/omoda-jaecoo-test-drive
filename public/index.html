@@ -654,7 +654,7 @@
         $('#t-status').textContent = STATUS_LABEL[t.status];
         $('#t-stats').hidden = t.status !== 'waiting';
         $('#t-pos').textContent = Math.max(position - 1, 0);
-        $('#t-eta').textContent = m.minutes ? Math.max(0, Math.ceil((position - 1) / m.units)) * m.minutes + ' min' : '–';
+        $('#t-eta').textContent = m.minutes ? Math.max(0, Math.ceil((position - 1) / Math.max(1, m.units))) * m.minutes + ' min' : '–';
         $('#t-banner').innerHTML =
           t.status === 'called' ? '<div class="called-banner">It\'s your turn! Please proceed to the OMODA JAECOO Booth with your driver\'s license.</div>' :
           t.status === 'driving' ? '<p class="muted">Enjoy your drive!</p>' :

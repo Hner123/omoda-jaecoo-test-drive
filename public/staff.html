@@ -101,11 +101,11 @@
     };
 
     async function load() {
-      if (reorderView.drag || reorderView.saving) return;
+      if (reorderView.drag || reorderView.saving || fleetView.saving.size) return;
       const version = ++reorderView.version;
       try {
         const loaded = await api('/api/staff/tickets', { pin });
-        if (version !== reorderView.version || reorderView.drag || reorderView.saving) return;
+        if (version !== reorderView.version || reorderView.drag || reorderView.saving || fleetView.saving.size) return;
         state = loaded;
         render();
       } catch (err) {
@@ -120,6 +120,7 @@
     let guestOpener = null;
     const documentImages = new Map();
     const reorderView = { drag: null, saving: false, version: 0 };
+    const fleetView = { saving: new Set() };
     const orderKey = (ticket) => ticket.queueAt ?? ticket.createdAt;
 
     function moveId(ids, id, offset) {
@@ -208,6 +209,47 @@
     function drainTimeText(model, count) {
       const minutes = Math.ceil(Math.max(0, Number(model.minutes) || 0) * count / Math.max(1, Number(model.units) || 1));
       return `${count} waiting · about ${minutes}m of drives to clear the line`;
+    }
+
+    function fleetAvailability(units = 1, driving = 0) {
+      const free = Math.max(0, units - driving);
+      const text = driving > units ? `${units} of ${units} out (+${driving - units} over)`
+        : free === 0 ? `All ${units} cars out` : `Cars: ${free} of ${units} free`;
+      return { free, text };
+    }
+
+    async function changeFleet(modelId, offset) {
+      if (fleetView.saving.has(modelId)) return;
+      const model = state.models.find((m) => m.id === modelId);
+      if (!model) return;
+      const original = model.units;
+      const units = original + offset;
+      if (units < 0 || units > 50) return;
+      fleetView.saving.add(modelId);
+      ++reorderView.version; // Discard polls begun before this edit, including after it settles.
+      model.units = units;
+      render();
+      try {
+        const result = await api('/api/staff/fleet', { method: 'POST', pin, body: { model: modelId, units } });
+        model.units = result.units;
+      } catch (err) {
+        model.units = original;
+        toast(err.message);
+      } finally {
+        fleetView.saving.delete(modelId);
+        render();
+        await load();
+      }
+    }
+
+    function fleetControls(model, driving) {
+      const units = model.units ?? 1;
+      const { free, text } = fleetAvailability(units, driving);
+      const name = model.name.replace(/^JAECOO\s+/, '');
+      return `<div class="q-fleet${free === 0 ? ' out' : ''}"><span>${text}</span><span class="q-fleet-buttons" aria-label="Demo car total">
+        <button type="button" data-key="fleet-less" data-fleet="${esc(model.id)}" data-offset="-1" aria-label="Fewer ${esc(name)} cars" ${units === 0 || fleetView.saving.has(model.id) ? 'disabled' : ''}>&minus;</button>
+        <button type="button" data-key="fleet-more" data-fleet="${esc(model.id)}" data-offset="1" aria-label="More ${esc(name)} cars" ${units === 50 || fleetView.saving.has(model.id) ? 'disabled' : ''}>+</button>
+      </span></div>`;
     }
 
     function matching(items) {
@@ -313,6 +355,7 @@
         ['wait', waitingAll.length, 'waiting'], ['call', by('called').length, 'calling'],
         ['drive', by('driving').length, 'on the road'], ['done', by('done').length, 'drives done'],
         ['', longestWait(state.tickets), 'longest wait'],
+        ['', state.models.reduce((sum, m) => sum + fleetAvailability(m.units, by('driving').filter((t) => t.model === m.id).length).free, 0), 'cars free'],
       ].map(([c, n, label]) => `<span class="q-kpi" data-key="${label}">${c ? `<i class="${c}" aria-hidden="true"></i>` : ''}<b>${n}</b>${label}</span>`).join(''));
       updateMarkup($('#q-filters'), [['all', 'Everyone', waitingAll.length], ['pre', 'Pre-registered', filterRegistered(waitingAll, 'pre').length]]
         .map(([value, label, count]) => `<button type="button" class="q-chip" data-key="${value}" data-filter="${value}" aria-pressed="${queueView.filter === value}">${label}<span class="c">${count}</span></button>`).join(''));
@@ -325,15 +368,17 @@
         const recent = pick('done', 'noshow', 'cancelled').sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0));
         const slots = (status, label, empty) => {
           const all = pick(status), found = matching(all);
-          return found.map((t) => slot(t, m)).join('') || `<div class="q-slot empty" data-key="empty-${status}"><span class="lab">${label}</span>${all.length ? 'No matches' : empty}</div>`;
+          const free = fleetAvailability(m.units, all.length).free;
+          const availability = status === 'driving' && free > 0 && (m.units ?? 1) !== 1 ? `<div class="q-slot empty" data-key="free-cars"><span class="lab">${label}</span>${free} free</div>` : '';
+          return (found.map((t) => slot(t, m)).join('') + availability) || `<div class="q-slot empty" data-key="empty-${status}"><span class="lab">${label}</span>${all.length ? 'No matches' : empty}</div>`;
         };
         return `<section class="q-lane" data-key="model-${esc(m.id)}">
           <div class="q-lane-head">
             <img src="${esc(m.image)}" alt="" />
-            <div><h2>${esc(m.name)}<small>${esc(m.tagline || m.brand || '')}</small></h2><div class="q-meta">${drainTimeText(m, waiting.length)}</div></div>
+            <div><h2>${esc(m.name)}<small>${esc(m.tagline || m.brand || '')}</small></h2><div class="q-meta">${drainTimeText(m, waiting.length)}</div>${fleetControls(m, pick('driving').length)}</div>
             <button type="button" class="q-callnext" data-next="${esc(m.id)}" aria-label="Call next ${waiting[0] ? esc(waiting[0].number) + ' · ' : ''}${esc(m.name)}" ${waiting.length ? '' : 'disabled'}>Call next${waiting[0] ? ` <span class="q-num">${esc(waiting[0].number)}</span>` : ''}</button>
           </div>
-          <div class="q-now">${slots('driving', 'On the road', 'Car is free')}${slots('called', 'Calling', 'Nobody is being called')}</div>
+          <div class="q-now">${slots('driving', 'On the road', (m.units ?? 1) === 1 ? 'Car is free' : fleetAvailability(m.units, pick('driving').length).text)}${slots('called', 'Calling', 'Nobody is being called')}</div>
           <div class="q-sect"><span>In line (${filtered ? list.length + ' of ' : ''}${waiting.length})</span></div>
           ${filtered ? '<p class="q-reorder-note">Show Everyone and clear search to reorder</p>' : ''}
           ${list.length ? `<ul class="q-rows" data-waiting-model="${esc(m.id)}">${list.map((t) => row(t, waiting.indexOf(t) + 1, waiting.length)).join('')}</ul>` : `<div class="q-empty">${filtered ? 'No matches. Show Everyone or clear the search.' : 'No one is waiting for this car.'}</div>`}
@@ -946,6 +991,7 @@
     async function queueClick(e) {
       const b = e.target.closest('button');
       if (b) {
+        if (b.dataset.fleet) return changeFleet(b.dataset.fleet, Number(b.dataset.offset));
         if (b.dataset.handle) return;
         if (b.dataset.move) return moveWaiting(b.dataset.move, Number(b.dataset.offset));
         if (b.dataset.section || b.dataset.recent) {

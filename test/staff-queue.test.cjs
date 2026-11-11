@@ -36,6 +36,79 @@ function harness() {
   return { context, $, tickets, run, render };
 }
 
+test('fleet availability text covers free, all out, zero cars and excess drives', () => {
+  const { context } = harness();
+  for (const [units, driving, free, text] of [
+    [5, 1, 4, 'Cars: 4 of 5 free'], [5, 5, 0, 'All 5 cars out'],
+    [5, 6, 0, '5 of 5 out (+1 over)'], [0, 0, 0, 'All 0 cars out'],
+  ]) {
+    const result = context.fleetAvailability(units, driving);
+    assert.equal(result.free, free);
+    assert.equal(result.text, text);
+  }
+});
+
+test('fleet rendering counts unfiltered drives, lists every driver and preserves single-car wording', () => {
+  const { context, $, render } = harness();
+  Object.assign(context.state.models[0], { units: 5, name: 'JAECOO J5 HEV' });
+  context.state.tickets.slice(0, 2).forEach((t) => { t.status = 'driving'; });
+  const markup = render();
+  assert.match(markup, /Cars: 3 of 5 free/);
+  assert.match(markup, />3 free<\/div>/);
+  assert.match(markup, /data-open="t0"/);
+  assert.match(markup, /data-open="t1"/);
+  assert.match(markup, /aria-label="Fewer J5 HEV cars"/);
+  assert.match(markup, /aria-label="More J5 HEV cars"/);
+  assert.match($('#summary').markup, /<b>3<\/b>cars free/);
+  context.state.models[0].units = 1;
+  context.state.tickets.forEach((t) => { t.status = 'done'; });
+  assert.match(render(), /Car is free/);
+  context.state.models[0].units = 0;
+  assert.match(render(), /q-fleet out/);
+  assert.match(render(), /data-offset="-1" aria-label="Fewer J5 HEV cars" disabled/);
+  context.state.models[0].units = 50;
+  assert.match(render(), /data-offset="1" aria-label="More J5 HEV cars" disabled/);
+});
+
+test('fleet optimistic edits reject stale polls, pause polling while saving and revert on error', async () => {
+  const { context, run } = harness();
+  const start = html.indexOf('    async function load()');
+  const end = html.indexOf('    const genderLabel', start);
+  vm.runInContext(html.slice(start, end), context);
+  context.pin = '1234';
+  const model = context.state.models[0];
+  model.units = 5;
+  let resolvePoll, rejectSave;
+  let requests = 0;
+  const messages = [];
+  context.toast = (message) => messages.push(message);
+  context.api = async (route, options) => {
+    requests++;
+    if (route === '/api/staff/fleet') {
+      assert.equal(options.body.units, 6);
+      return new Promise((resolve, reject) => { rejectSave = reject; });
+    }
+    return new Promise((resolve) => { resolvePoll = resolve; });
+  };
+  const poll = context.load();
+  const edit = context.changeFleet('J7', 1);
+  assert.equal(model.units, 6);
+  await context.load();
+  assert.equal(requests, 2, 'no poll during save');
+  const stale = structuredClone(context.state);
+  stale.models[0].units = 1;
+  resolvePoll(stale);
+  await poll;
+  assert.equal(model.units, 6);
+  rejectSave(new Error('Fleet save failed'));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(model.units, 5);
+  assert.deepEqual(messages, ['Fleet save failed']);
+  resolvePoll(context.state);
+  await edit;
+  assert.equal(run('fleetView.saving.size'), 0);
+});
+
 test('staff inline script parses', () => {
   const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)].map((m) => m[1]).filter((s) => s.trim());
   assert.equal(scripts.length, 1);
