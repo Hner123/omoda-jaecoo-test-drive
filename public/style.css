@@ -273,7 +273,7 @@ input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 2p
 .pill.sms-failed { color: var(--danger); border-color: #986060; }
 
 /* Staff queue: XPeng lane and drawer structure, OMODA & JAECOO palette. */
-.staff .q-num { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.staff .q-num { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; white-space: nowrap; flex: 0 0 max-content; }
 .staff .q-head { display: flex; align-items: flex-end; gap: 20px 32px; flex-wrap: wrap; margin-bottom: 20px; }
 .staff .q-head h1 { font-size: 30px; margin: 0; }
 .staff .q-head .eyebrow { margin-bottom: 6px; }
@@ -372,23 +372,30 @@ body.staff.q-open .q-drawer { transform: none; visibility: visible; }
 .staff .q-announce[aria-pressed="true"] .q-tog::after { transform: translateX(16px); }
 .staff .q-lanes { grid-template-columns: minmax(0, 1fr); }
 .staff .q-lane { background: #fff; }
-.staff .q-lane-head { grid-template-columns: 88px minmax(0, 1fr); gap: 12px; }
-.staff .q-lane-head img { width: 88px; }
-.staff .q-lane-head h2 { font-size: 22px; }
+.staff .q-lane-head { grid-template-columns: 64px minmax(0, 1fr); gap: 12px; padding: 14px; }
+.staff .q-lane-head img { width: 64px; }
+.staff .q-lane-head > div { min-width: 0; overflow-wrap: anywhere; }
+.staff .q-lane-head h2 { font-size: 20px; }
 .staff .q-lane-head h2 small { display: block; width: 100%; letter-spacing: .08em; }
 .staff .q-callnext { grid-column: 1 / -1; min-height: 46px; }
-.staff .q-slot { grid-template-columns: minmax(0, 1fr); }
+.staff .q-lane .q-now { padding: 12px 12px 4px; }
+.staff .q-slot, .staff .q-slot.empty { grid-template-columns: minmax(0, 1fr); min-width: 0; }
 .staff .q-slot .nm { white-space: normal; overflow-wrap: anywhere; }
 .staff .q-slot .sub { grid-column: 1; }
 .staff .q-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .staff .q-mini { height: auto; min-height: 36px; }
 .staff .q-slot .q-actions { grid-column: 1; grid-row: 4; }
-.staff .q-r { grid-template-columns: 22px max-content minmax(0, 1fr) auto; gap: 8px 10px; min-height: 52px; }
-.staff .q-r .nm { white-space: normal; overflow-wrap: anywhere; }
-.staff .q-r .q-reorder { grid-column: 2 / 4; }
-.staff .q-r .q-actions { grid-column: 4; justify-content: flex-end; }
-.staff .q-r:not(:has(.q-reorder)) .q-actions { grid-column: 2 / -1; }
-.staff .q-reorder { display: flex; gap: 4px; }
+.staff .q-lane .q-actions { min-width: 0; }
+.staff .q-lane .q-actions .q-mini { flex: 1 1 auto; white-space: normal; overflow-wrap: anywhere; }
+.staff .q-lane .q-rows { padding: 0 4px 8px; }
+.staff .q-r { display: flex; flex-wrap: wrap; gap: 6px 8px; padding: 8px; min-height: 52px; }
+.staff .q-r .pos { flex: 0 0 20px; }
+.staff .q-r > .q-num { flex: 0 0 max-content; }
+.staff .q-r .nm { flex: 1 1 calc(100% - 120px); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.staff .q-r .w { order: 1; margin-left: 28px; text-align: left; overflow-wrap: anywhere; }
+.staff .q-r .q-actions { order: 2; flex: 1 1 auto; }
+.staff .q-r .q-reorder { order: 3; }
+.staff .q-reorder { display: flex; flex-wrap: wrap; gap: 4px; }
 .staff .q-reorder button { min-width: 36px; min-height: 36px; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--accent-ink); }
 .staff .q-reorder .reorder-handle { cursor: grab; font-size: 18px; }
 .staff .q-reorder button:disabled, .staff .q-reorder button[aria-disabled="true"] { opacity: .4; cursor: default; }
@@ -399,8 +406,8 @@ body.staff.q-open .q-drawer { transform: none; visibility: visible; }
 .staff .q-f { display: inline-block; margin-left: 6px; background: var(--accent-soft); color: var(--accent-ink); }
 .staff .q-recent { display: block; padding: 6px 10px; }
 .staff .q-recent-toggle { min-height: 36px; width: 100%; padding: 6px 10px; background: transparent; border: 0; text-align: left; color: var(--ink-2); font-size: 12px; }
-.staff .q-recent .q-r { grid-template-columns: max-content minmax(0, 1fr) auto; }
-.staff .q-recent .q-r .q-actions { grid-column: 1 / -1; }
+.staff .q-recent .q-r .nm { flex-basis: calc(100% - 92px); }
+.staff .q-recent .q-r .w { margin-left: 0; }
 body.staff.q-open { overflow: hidden; }
 .staff .q-drawer { background: #fff; }
 .staff .q-x { min-width: 36px; min-height: 36px; }
@@ -413,28 +420,17 @@ body.staff.q-open { overflow: hidden; }
 .staff .q-sms.sms-failed { color: var(--danger); }
 .staff .q-mini:disabled { opacity: .45; }
 .staff .q-more { min-height: 38px; height: auto; }
-@media (min-width: 1100px) {
+@media (min-width: 760px) {
   .staff .q-lanes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-@media (min-width: 1400px) {
-  .staff .q-lane-head { grid-template-columns: 88px minmax(0, 1fr) auto; }
-  .staff .q-callnext { grid-column: 3; padding: 0 14px; }
+@media (min-width: 1200px) {
+  .staff .q-lanes { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
   .staff .q-head h1 { font-size: 26px; }
   .staff .q-kpis, .staff .q-announce { margin-left: 0; }
   .staff .q-kpi { padding: 7px 10px; gap: 6px; }
   .staff .q-search { flex-basis: 100%; max-width: none; }
-  .staff .q-lane-head { padding: 14px; grid-template-columns: 64px minmax(0, 1fr); }
-  .staff .q-lane-head img { width: 64px; }
-  .staff .q-now { padding: 12px 12px 4px; }
-  .staff .q-rows { padding: 0 4px 8px; }
-  .staff .q-r { grid-template-columns: 20px max-content minmax(0, 1fr); padding: 10px 8px; gap: 8px; }
-  .staff .q-r .w { grid-column: 2; grid-row: 2; text-align: left; }
-  .staff .q-r .q-reorder { grid-column: 2 / -1; grid-row: 3; }
-  .staff .q-r .q-actions, .staff .q-r:not(:has(.q-reorder)) .q-actions { grid-column: 2 / -1; }
-  .staff .q-recent .q-r { grid-template-columns: max-content minmax(0, 1fr); }
-  .staff .q-recent .q-r .w { grid-column: 1; }
   .staff .q-dr-head { padding: 18px; }
   .staff .q-dr-body { padding: 18px; }
   .staff .q-kv { grid-template-columns: 100px minmax(0, 1fr); gap: 9px; }
