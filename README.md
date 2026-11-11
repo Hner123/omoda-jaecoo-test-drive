@@ -11,6 +11,14 @@ Walk-in test drive queueing for the showroom. Runs two ways from the same code:
 | Staff console | `/staff` | Call next, start drive, finish, no-show, re-queue, remove (PIN protected) |
 | Lobby display | `/display` | TV screen: now calling, up next, chime on each call; light/dark toggle |
 
+## Deploy on Vercel (frontend) + self-hosted backend
+
+Import this repository into Vercel with the repository root as the project root. `vercel.json` serves `public/` as a static frontend, skips installation and building, and proxies same-origin `/api/*` requests to `https://drive.heineraboka.site/api/*`. It also rewrites `/staff`, `/display` and `/qr` to their HTML pages, sets `no-cache` on HTML/JS/CSS and HTML routes, and adds basic security headers. No Vercel serverless functions are used; `.vercelignore` includes only `public/` and `vercel.json` in the deployment.
+
+Run `node server.js` on the backend server behind that HTTPS URL. SMS, voice generation, staff PIN validation, credentials and all persistent data live on the backend server; configure their environment variables there. The frontend continues using `/api/...`, including announcement audio, registration JSON bodies and the `x-staff-pin` header.
+
+The backend URL is set in the `/api/:path*` rewrite's `destination` in `vercel.json`. To change servers, replace `https://drive.heineraboka.site` there, keep `/api/:path*`, and redeploy the frontend. Keep the backend reachable over HTTPS. `netlify.toml` remains available for Netlify deployments.
+
 ## Deploy to Netlify
 
 One-time:

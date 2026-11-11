@@ -1,0 +1,5 @@
+# Deploy only the static frontend and its Vercel configuration.
+*
+!public/
+!public/**
+!vercel.json
