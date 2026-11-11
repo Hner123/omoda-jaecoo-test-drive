@@ -44,6 +44,33 @@ test('staff inline script parses', () => {
   assert.match(html, /id="q-drawer" role="dialog" aria-modal="true" aria-labelledby="q-guest-name"/);
 });
 
+test('waiting rows and guest drawer offer Call and No-show with accessible labels; no-show retains Re-queue', () => {
+  const { context, $, run, render } = harness();
+  const ticket = context.state.tickets[0];
+  ticket.status = 'waiting';
+  ticket.number = 'J5-003';
+  run("queueView.selected = 't0'");
+  const markup = render();
+  for (const content of [markup, $('#q-drawer').markup]) {
+    assert.match(content, /data-act="call" aria-label="Call J5-003">Call<\/button>/);
+    assert.match(content, /class="q-mini red"[^>]*data-act="noshow" aria-label="No-show J5-003">No-show<\/button>/);
+    assert.doesNotMatch(content, /data-act="cancel"|Remove/);
+  }
+  ticket.status = 'noshow';
+  render();
+  assert.match($('#q-drawer').markup, /data-act="requeue" aria-label="Re-queue J5-003">Re-queue<\/button>/);
+});
+
+test('no-show report wording covers guests who were never called', () => {
+  const start = html.indexOf('    function driveStatus(');
+  const end = html.indexOf('    const manilaTime', start);
+  const context = vm.createContext({});
+  vm.runInContext(html.slice(start, end), context);
+  for (const isToday of [true, false]) {
+    assert.deepEqual(Array.from(context.driveStatus({ status: 'noshow' }, isToday)), ['No-show', 'Did not show up']);
+  }
+});
+
 test('filter matches number/name case-insensitively and normalizes spaces and dashes in phones', () => {
   const { context, tickets } = harness();
   for (const query of ['j7-001', 'MARIA cru', '09171234567', '0917-123 4567', '123 456']) {
@@ -177,7 +204,7 @@ test('waiting positions keep original queue order under search and row controls 
   const markup = render();
   assert.match(markup, /In line \(1 of 8\)/);
   assert.match(markup, /aria-label="Position 4">4\./);
-  for (const label of ['Call', 'Remove']) assert.ok(markup.includes(`aria-label="${label} J7-004"`));
+  for (const label of ['Call', 'No-show']) assert.ok(markup.includes(`aria-label="${label} J7-004"`));
   assert.match(markup, /data-open="t3" tabindex="0" aria-label="Details J7-004 Customer 3"/);
 });
 

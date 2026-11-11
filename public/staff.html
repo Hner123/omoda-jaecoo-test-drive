@@ -216,7 +216,7 @@
 
     function ticketActions(t) {
       return {
-        waiting: [['call', 'Call'], ['cancel', 'Remove', 'red']],
+        waiting: [['call', 'Call'], ['noshow', 'No-show', 'red']],
         called: [['call', 'Recall'], ['start', 'Start drive', 'dark'], ['noshow', 'No-show', 'red']],
         driving: [['finish', 'Finish drive', 'dark']],
         noshow: [['requeue', 'Re-queue']],
@@ -577,7 +577,7 @@
     function driveStatus(t, isToday) {
       switch (t.status) {
         case 'done': return ['Completed', ''];
-        case 'noshow': return ['No-show', 'Called, did not show up'];
+        case 'noshow': return ['No-show', 'Did not show up'];
         case 'cancelled': return ['Cancelled', 'Left the queue or removed by staff'];
         case 'driving': return isToday ? ['On test drive', 'In progress'] : ['Completed', 'Drive was not marked finished'];
         case 'called': return isToday ? ['Called', 'In progress'] : ['No-show', 'Called, test drive never started'];
