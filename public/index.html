@@ -38,7 +38,7 @@
         <div><label for="name">Full name</label><input id="name" type="text" required maxlength="60" placeholder="Juan Dela Cruz" /></div>
         <div><label for="gender">Gender</label><select id="gender" required><option value="">Please select</option><option value="male">Male</option><option value="female">Female</option></select></div>
         <div><label for="email">E-mail address</label><input id="email" type="email" required maxlength="120" placeholder="you@example.com" autocapitalize="off" /></div>
-        <div><label for="phone">Mobile number</label><input id="phone" type="tel" required maxlength="16" placeholder="09XX XXX XXXX" /></div>
+        <div><label for="phone">Mobile number</label><input id="phone" type="tel" inputmode="tel" required placeholder="09XX XXX XXXX" /></div>
         <div><label for="municipality">Municipality / city of residence</label><input id="municipality" type="text" required maxlength="80" placeholder="e.g. Quezon City" /></div>
         <div>
           <label for="customer-type">Customer type</label>
@@ -334,6 +334,10 @@
     // Scan details are optional; customers only provide the photos and signature.
     let licenseNumber = null;
     let licenseExpiry = null;
+    function isPhMobile(raw) {
+      const phone = String(raw || '').replace(/[\s.()-]/g, '');
+      return /^(?:0|\+?63)?9\d{9}$/.test(phone);
+    }
     function scanExpiry(value) {
       const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
       if (!m) return null;
@@ -591,6 +595,7 @@
       $('#err').textContent = '';
       $('#submit').disabled = true;
       try {
+        if (!isPhMobile($('#phone').value)) throw new Error('Please enter a valid mobile number (e.g. 0917 123 4567)');
         const { ticket } = await api('/api/tickets', {
           method: 'POST',
           body: {

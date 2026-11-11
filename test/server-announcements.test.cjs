@@ -53,6 +53,7 @@ test('port 3100 local HTTP smoke: complete registration, private documents, anno
     assert.deepEqual(publicState.testDriveResources, require('../lib/queue').TEST_DRIVE_RESOURCES);
     console.log(`GET /api/state -> 200; ${publicState.dealers.length} dealerships`);
     for (const [patch, error] of [
+      [{ phone: '04846488464' }, 'Please enter a valid mobile number (e.g. 0917 123 4567)'],
       [{ licensePhoto: undefined }, 'Please add a photo of the front of your license'],
       [{ licensePhotoBack: undefined }, 'Please add a photo of the back of your license'],
       [{ signature: undefined }, 'Please add your signature'],

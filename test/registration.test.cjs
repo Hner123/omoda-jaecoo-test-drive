@@ -64,6 +64,10 @@ test('real Netlify adapter validates registration and stores/serves all three pr
     assert.equal((await res.json()).error, error);
     assert.equal(blobs.size, 0);
   }
+  const landline = await post({ ...registration, phone: '04846488464' });
+  assert.equal(landline.status, 400);
+  assert.equal((await landline.json()).error, 'Please enter a valid mobile number (e.g. 0917 123 4567)');
+  assert.equal(blobs.size, 0);
   const forged = await post({ ...registration, dealer: 'Unlisted branch', guestMatched: true });
   assert.equal(forged.status, 400);
   const res = await post(registration);
@@ -343,10 +347,11 @@ test('kiosk scan retains optional metadata, clears stale values on unreadable re
       return scanResult;
     },
   });
-  const helper = html.slice(html.indexOf('    function scanExpiry('), html.indexOf('    function validate()'));
+  const helper = html.slice(html.indexOf('    function isPhMobile('), html.indexOf('    function validate()'));
   const scan = html.slice(html.indexOf('    let licensePhotoBack'), html.indexOf("    $('#back-btn').onclick"));
   const submit = html.slice(html.indexOf("    $('#form').addEventListener('submit'"), html.indexOf('    // ---- ticket view'));
   vm.runInContext(helper + scan + submit, context);
+  $('#phone').value = '09171234567';
   const event = () => ({ target: { files: [{}], value: 'photo' } });
   for (const result of [
     { licenseNumber: 'TEST-123', expiry: '2099-12-31', confidence: 'high' },
