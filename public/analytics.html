@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OMODA & JAECOO Queue — Analytics</title>
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    .an { --mono: ui-monospace, 'SFMono-Regular', Consolas, monospace; --drove: var(--accent); --open: #7dd3e6; --noshow: #d99a2b; --cancel: #b9c1c9; --track: #eef1f4; }
+    .an .wrap { max-width: 1280px; }
+    .a-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+    .a-head h1 { margin: 0; text-transform: none; letter-spacing: -.02em; font-weight: 600; }
+    .a-head .ctl { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .a-head select { width: auto; min-height: 40px; border-radius: 999px; padding: 0 14px; font-size: 14px; background: #fff; }
+    .a-head .btn { border-radius: 999px; min-height: 40px; }
+    .a-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .a-kpi { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px; }
+    .a-kpi b { display: block; font: 700 30px/1.1 var(--mono); color: var(--ink); }
+    .a-kpi span { font-size: 13px; color: var(--ink-2); }
+    .a-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 16px; align-items: start; }
+    .a-card { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 20px 22px; min-width: 0; }
+    .a-card.wide { grid-column: 1 / -1; }
+    .a-card h2 { margin: 0 0 4px; font-size: 18px; text-transform: none; letter-spacing: -.01em; font-weight: 600; }
+    .a-card .sub { margin: 0 0 18px; font-size: 13px; color: var(--ink-3); line-height: 1.5; }
+    .lead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; background: var(--accent-soft); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
+    .lead b { font: 700 34px/1 var(--mono); color: var(--accent); }
+    .lead span { font-size: 14px; color: var(--ink-2); }
+    .lead strong { color: var(--ink); }
+    .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--ink-2); margin-top: 12px; }
+    .legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; background: var(--c); }
+    .bars { display: flex; flex-direction: column; gap: 10px; }
+    .bar { display: grid; grid-template-columns: 150px minmax(0, 1fr) 96px; gap: 12px; align-items: center; font-size: 13px; }
+    .bar .lb { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bar .lb.muted { color: var(--ink-3); }
+    .bar .tr { height: 22px; background: var(--track); border-radius: 6px; overflow: hidden; display: flex; }
+    .bar .tr i { display: block; height: 100%; }
+    .bar .v { font: 700 13px var(--mono); text-align: right; white-space: nowrap; }
+    .bar .v small { font: 500 11px var(--mono); color: var(--ink-3); }
+    .table-scroll { overflow-x: auto; }
+    .a-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .a-table th { text-align: right; font-weight: 600; color: var(--ink-2); padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    .a-table th:first-child, .a-table td:first-child { text-align: left; }
+    .a-table td { text-align: right; padding: 9px 10px; border-bottom: 1px solid var(--line); font-family: var(--mono); white-space: nowrap; }
+    .a-table td:first-child { font-family: inherit; font-weight: 600; white-space: normal; min-width: 120px; }
+    .a-table td.zero { color: #a7b0b9; }
+    .a-table td.tot { font-weight: 700; font-size: 14px; }
+    .a-table tr.total td { font-weight: 700; border-bottom: 0; }
+    .a-table tr.grp td { font-family: inherit; font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--accent-ink); background: var(--surface); padding-top: 10px; }
+    .a-table.sc td:first-child { font-weight: 500; }
+    .share { display: block; height: 4px; border-radius: 999px; background: var(--track); margin-top: 4px; overflow: hidden; min-width: 60px; }
+    .share i { display: block; height: 100%; background: var(--accent); }
+    .lb-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 20px 28px; }
+    .lb-col h3 { margin: 0 0 8px; font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent-ink); }
+    .lb-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+    .lb-row .rk { font: 700 12px var(--mono); color: var(--ink-3); }
+    .lb-row .n { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .lb-row .c { font: 700 14px var(--mono); }
+    .lb-row .c small { font: 500 11px var(--mono); color: var(--ink-3); margin-left: 4px; }
+    .lb-row.none .n { color: var(--ink-3); font-style: italic; }
+    .note { font-size: 12px; color: var(--ink-3); margin: 12px 0 0; line-height: 1.5; }
+    .empty { color: var(--ink-3); font-size: 14px; padding: 8px 0; }
+    .a-login { max-width: 420px; }
+    @media (max-width: 640px) {
+      .bar { grid-template-columns: 96px minmax(0, 1fr) 76px; gap: 8px; }
+      .a-card { padding: 16px; }
+      .a-kpi b { font-size: 24px; }
+    }
+  </style>
+</head>
+<body class="an">
+  <header class="topbar">
+    <a class="brand" href="/staff"><span class="logo" role="img" aria-label="OMODA &amp; JAECOO"></span> <small>Analytics</small></a>
+    <nav><a href="/">Kiosk</a><a href="/staff">Staff</a><a href="/analytics" class="active">Analytics</a><a href="/display" target="_blank">Lobby display</a><a href="/qr" target="_blank">QR poster</a></nav>
+  </header>
+
+  <main class="wrap a-login" id="login" hidden>
+    <p class="eyebrow">Staff only</p>
+    <h1>Sign in</h1>
+    <form class="panel" id="login-form">
+      <label for="pin">Staff PIN</label>
+      <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" />
+      <div class="error" id="login-err"></div>
+      <button class="btn block" type="submit">Continue</button>
+    </form>
+  </main>
+
+  <main class="wrap" id="page" hidden>
+    <div class="a-head">
+      <div><p class="eyebrow" id="a-when">Test drive analytics</p><h1>Analytics</h1></div>
+      <div class="ctl">
+        <select id="a-day" aria-label="Day"></select>
+        <button type="button" class="btn ghost sm" id="a-refresh">Refresh</button>
+      </div>
+    </div>
+    <div id="a-body" aria-live="polite"><p class="empty">Loading…</p></div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script src="/analytics-core.js"></script>
+  <script>
+    // Same PIN storage as the staff console, so a signed-in staff member goes straight in.
+    const PIN_KEY = 'xpq-pin';
+    let pin = sessionStorage.getItem(PIN_KEY);
+    const fmtDay = (d) => new Date(d + 'T00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    const shortDate = (d) => { const [y, m, dd] = d.split('-'); return `${m}.${dd}.${y.slice(2)}`; };
+    const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+    const num = (n) => `<td class="${n ? '' : 'zero'}">${n}</td>`;
+
+    function showLogin(message) {
+      sessionStorage.removeItem(PIN_KEY);
+      pin = null;
+      $('#page').hidden = true;
+      $('#login').hidden = false;
+      $('#login-err').textContent = message || '';
+      $('#pin').focus();
+    }
+
+    function bar(label, segments, max, value, muted) {
+      const segs = segments.map(([n, color, title]) => (n ? `<i style="width:${(n / max) * 100}%;background:${color}" title="${esc(title)}: ${n}"></i>` : '')).join('');
+      return `<div class="bar"><span class="lb${muted ? ' muted' : ''}" title="${esc(label)}">${esc(label)}</span><span class="tr">${segs}</span><span class="v">${value}</span></div>`;
+    }
+
+    function render(a) {
+      $('#a-when').textContent = fmtDay(a.date) + (a.isToday ? ' · Live' : '');
+      if (!a.kpis.registrations) {
+        $('#a-body').innerHTML = `<p class="empty">No registrations on this day yet.</p>`;
+        return;
+      }
+      const k = a.kpis;
+      const kpis = [[k.registrations, 'registrations'], [k.people, 'people'], [k.drives, 'test drives'], [k.drovePct + '%', 'of registrations drove'], [k.noshows, 'no-shows']];
+      if (a.isToday) kpis.push([k.inLine, 'still in line']);
+
+      // ---- by dealer (OMODA has many dealers, so a ranking instead of a head-to-head) ----
+      const dMax = Math.max(1, ...a.dealers.map((d) => d.registered));
+      const leadText = !a.leader ? '<span>No test drives yet.</span>'
+        : a.leader.tied ? `<b>${a.leader.drives}</b><span>drives — <strong>tied at the top</strong></span>`
+        : `<b>${a.leader.drives}</b><span><strong>${esc(a.leader.name)} leads</strong>${a.leader.by ? ` by ${plural(a.leader.by, 'drive')}` : ''}</span>`;
+      const dealerCard = `<section class="a-card wide">
+        <h2>By dealer</h2><p class="sub">Test drives by the dealer the guest picked on the form. The light part of each bar is registrations that did not drive (yet).</p>
+        <div class="lead">${leadText}</div>
+        <div class="bars">${a.dealers.map((d) => bar(d.name, [[d.drives, 'var(--drove)', 'Drove'], [d.registered - d.drives, 'var(--open)', 'Registered, no drive']], dMax,
+          `${d.drives}<small> / ${d.registered} reg. · ${d.drovePct}%</small>`, d.name === Analytics.NOT_RECORDED)).join('')}</div>
+        <div class="legend"><span style="--c:var(--drove)">Drove</span><span style="--c:var(--open)">Registered, no drive</span></div>
+      </section>`;
+
+      // ---- by car ----
+      const cMax = Math.max(1, ...a.cars.map((c) => c.registered));
+      const carCard = `<section class="a-card">
+        <h2>By car</h2><p class="sub">Registrations per model and what happened to them.</p>
+        <div class="bars">${a.cars.map((c) => bar(c.name, [[c.drove, 'var(--drove)', 'Drove'], [c.open, 'var(--open)', 'In line'], [c.noshow, 'var(--noshow)', 'No-show'], [c.cancelled, 'var(--cancel)', 'Cancelled']], cMax, c.drove)).join('')}</div>
+        <div class="legend"><span style="--c:var(--drove)">Drove</span>${a.isToday ? '<span style="--c:var(--open)">In line</span>' : ''}<span style="--c:var(--noshow)">No-show</span><span style="--c:var(--cancel)">Cancelled</span></div>
+        <div class="table-scroll" style="margin-top:18px"><table class="a-table">
+          <thead><tr><th>Car</th><th>Registered</th><th>Drove</th><th>No-show</th><th>Cancelled</th>${a.isToday ? '<th>In line</th>' : ''}<th>Drove %</th></tr></thead>
+          <tbody>${a.cars.map((c) => `<tr><td>${esc(c.name)}</td>${num(c.registered)}${num(c.drove)}${num(c.noshow)}${num(c.cancelled)}${a.isToday ? num(c.open) : ''}<td>${c.drovePct}%</td></tr>`).join('')}
+            <tr class="total"><td>Total</td><td>${a.carTotal.registered}</td><td>${a.carTotal.drove}</td><td>${a.carTotal.noshow}</td><td>${a.carTotal.cancelled}</td>${a.isToday ? `<td>${a.carTotal.open}</td>` : ''}<td>${a.carTotal.drovePct}%</td></tr></tbody>
+        </table></div>
+      </section>`;
+
+      // ---- test drives by dealer and car ----
+      const withDrives = a.dealers.filter((d) => d.drives);
+      const totalDrives = Math.max(1, k.drives);
+      const dxcCard = `<section class="a-card">
+        <h2>Test drives by dealer and car</h2><p class="sub">${shortDate(a.date)} · test drives per dealer and car.</p>
+        ${withDrives.length ? `<div class="table-scroll"><table class="a-table">
+          <thead><tr><th>Dealer</th>${a.models.map((m) => `<th>${esc(m.name.replace(/^JAECOO /, ''))}</th>`).join('')}<th>Total</th></tr></thead>
+          <tbody>${withDrives.map((d) => `<tr><td>${esc(d.name)}</td>${a.models.map((m) => num(d.byCar[m.id] || 0)).join('')}<td class="tot">${d.drives}<span class="share"><i style="width:${(d.drives / totalDrives) * 100}%"></i></span></td></tr>`).join('')}</tbody>
+        </table></div>` : '<p class="empty">No test drives yet.</p>'}
+      </section>`;
+
+      // ---- sales executive leaderboard ----
+      const salesCard = `<section class="a-card wide">
+        <h2>Sales executive leaderboard</h2><p class="sub">Test drives per sales executive (registrations after the slash), grouped by dealer.</p>
+        ${a.salesGroups.length ? `<div class="lb-cols">${a.salesGroups.map((g) => `<div class="lb-col"><h3>${esc(g.dealer)}</h3>
+          ${g.people.map((p, i) => `<div class="lb-row"><span class="rk">${i + 1}</span><span class="n" title="${esc(p.name)}">${esc(p.name)}</span><span class="c">${p.drives}<small>/ ${p.registered} reg.</small></span></div>`).join('')}
+          ${g.notRecorded ? `<div class="lb-row none"><span class="rk">–</span><span class="n">Not recorded</span><span class="c">${g.notRecorded}</span></div>` : ''}</div>`).join('')}</div>` : '<p class="empty">No sales executives recorded yet.</p>'}
+        <p class="note">"Not recorded" = test drives where the guest left the sales executive field empty.</p>
+      </section>`;
+
+      // ---- sales executive × car ----
+      const scGroups = a.salesGroups.map((g) => ({ dealer: g.dealer, people: g.people.filter((p) => p.drives) })).filter((g) => g.people.length);
+      const scCard = `<section class="a-card wide">
+        <h2>Sales executive × car</h2><p class="sub">Test drives per sales executive and car (only drives with a sales executive recorded).</p>
+        ${scGroups.length ? `<div class="table-scroll"><table class="a-table sc">
+          <thead><tr><th>Sales executive</th>${a.models.map((m) => `<th>${esc(m.name.replace(/^JAECOO /, ''))}</th>`).join('')}<th>Total</th></tr></thead>
+          ${scGroups.map((g) => `<tbody><tr class="grp"><td colspan="${a.models.length + 2}">${esc(g.dealer)}</td></tr>
+            ${g.people.map((p) => `<tr><td>${esc(p.name)}</td>${a.models.map((m) => num(p.byCar[m.id] || 0)).join('')}<td class="tot">${p.drives}</td></tr>`).join('')}</tbody>`).join('')}
+        </table></div>` : '<p class="empty">No test drives with a sales executive recorded yet.</p>'}
+      </section>`;
+
+      // ---- where guests come from ----
+      const p = a.places;
+      const pMax = Math.max(1, ...(p.top.map((x) => x.people)), p.other ? p.other.people : 0);
+      const placeBar = (label, x, muted) => bar(label, [[x.drove, 'var(--drove)', 'Drove'], [x.people - x.drove, 'var(--open)', 'Did not drive']], pMax, `${x.people}<small> · ${x.drove} drove</small>`, muted);
+      const placeCard = `<section class="a-card wide">
+        <h2>Where guests come from</h2><p class="sub">People by municipality / city of residence (each person counted once). ${plural(p.count, 'place')}.</p>
+        <div class="bars">${p.top.map((x) => placeBar(x.name, x, x.name === 'Not given')).join('')}${p.other ? placeBar(`${plural(p.other.places, 'other place')}`, p.other, true) : ''}</div>
+        <div class="legend"><span style="--c:var(--drove)">Drove</span><span style="--c:var(--open)">Did not drive</span></div>
+      </section>`;
+
+      // ---- form fields ----
+      const fieldCard = (title, list) => {
+        const max = Math.max(1, ...list.map((x) => x.count));
+        return `<section class="a-card"><h2>${title}</h2><p class="sub">Registrations, share of the day.</p>
+          <div class="bars">${list.map((x) => bar(x.label, [[x.count, 'var(--drove)', x.label]], max, `${x.count}<small> · ${x.pct}%</small>`, x.label === Analytics.NOT_RECORDED)).join('')}</div></section>`;
+      };
+
+      $('#a-body').innerHTML =
+        `<div class="a-kpis">${kpis.map(([v, l]) => `<div class="a-kpi"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
+        <div class="a-grid">${dealerCard}${carCard}${dxcCard}${salesCard}${scCard}${placeCard}
+          ${fieldCard('Customer type', a.fields.customerType)}${fieldCard('Test drive resource', a.fields.resource)}${fieldCard('Gender', a.fields.gender)}</div>`;
+    }
+
+    let loading = false;
+    async function load() {
+      const day = $('#a-day').value;
+      if (!day || loading) return;
+      loading = true;
+      try {
+        render(Analytics.aggregate(await api('/api/staff/report/' + day, { pin })));
+      } catch (err) {
+        if (err.status === 401) return showLogin('Please sign in again.');
+        $('#a-body').innerHTML = `<p class="empty">${esc(err.message)}</p>`;
+      } finally {
+        loading = false;
+      }
+    }
+
+    async function start() {
+      const { days } = await api('/api/staff/report-days', { pin });
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+      const list = days.length ? days : [today];
+      $('#a-day').innerHTML = list.map((d) => `<option value="${d}">${d.replace(/-/g, '/')}${d === today ? ' (today)' : ''}</option>`).join('');
+      $('#login').hidden = true;
+      $('#page').hidden = false;
+      await load();
+    }
+
+    $('#login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const value = $('#pin').value.trim();
+      if (!value) return;
+      try {
+        await api('/api/staff/login', { method: 'POST', pin: value });
+        pin = value;
+        sessionStorage.setItem(PIN_KEY, value);
+        await start();
+      } catch (err) {
+        $('#login-err').textContent = err.status === 401 ? 'Wrong PIN.' : err.message;
+      }
+    });
+    $('#a-day').onchange = load;
+    $('#a-refresh').onclick = load;
+    // Today's numbers keep up during the event; past days don't change.
+    setInterval(() => {
+      if (!pin || document.hidden || $('#page').hidden) return;
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+      if ($('#a-day').value === today) load();
+    }, 30000);
+
+    if (pin) start().catch((err) => showLogin(err.status === 401 ? 'Please sign in again.' : err.message));
+    else showLogin();
+  </script>
+</body>
+</html>

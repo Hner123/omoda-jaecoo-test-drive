@@ -7,7 +7,8 @@
     { "source": "/api/:path*", "destination": "https://drive.heineraboka.site/api/:path*" },
     { "source": "/staff", "destination": "/staff.html" },
     { "source": "/display", "destination": "/display.html" },
-    { "source": "/qr", "destination": "/qr.html" }
+    { "source": "/qr", "destination": "/qr.html" },
+    { "source": "/analytics", "destination": "/analytics.html" }
   ],
   "headers": [
     {
@@ -43,6 +44,10 @@
     },
     {
       "source": "/qr",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+    },
+    {
+      "source": "/analytics",
       "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
     }
   ]
